@@ -52,6 +52,9 @@
 #ifdef HAVE_STRATIMIKOS_AMESOS
 #  include "Thyra_AmesosLinearOpWithSolveFactory.hpp"
 #endif
+#ifdef HAVE_STRATIMIKOS_AMESOS2
+#  include "Thyra_Amesos2LinearOpWithSolveFactory.hpp"
+#endif
 #if defined(HAVE_STRATIMIKOS_EPETRAEXT) && defined(HAVE_STRATIMIKOS_AZTECOO)
 #  include "Thyra_AztecOOLinearOpWithSolveFactory.hpp"
 #endif
@@ -484,6 +487,9 @@ void DefaultLinearSolverBuilder::initializeDefaults()
     Thyra::BelosLinearOpWithSolveFactory<double> >(),
     "Belos", true
     );
+  std::cout << "***************" << std::endl;
+  std::cout << "Initialized Belos" << std::endl;
+  std::cout << "***************" << std::endl;
 #endif
 
 #ifdef HAVE_STRATIMIKOS_AMESOS
@@ -492,6 +498,20 @@ void DefaultLinearSolverBuilder::initializeDefaults()
     Thyra::AmesosLinearOpWithSolveFactory>(),
     "Amesos", true
     );
+  std::cout << "***************" << std::endl;
+  std::cout << "Initialized Amesos" << std::endl;
+  std::cout << "***************" << std::endl;
+#endif
+
+#ifdef HAVE_STRATIMIKOS_AMESOS2
+  setLinearSolveStrategyFactory(
+    abstractFactoryStd<Thyra::LinearOpWithSolveFactoryBase<double>,
+    Thyra::Amesos2LinearOpWithSolveFactory>(),
+    "Amesos2", true
+    );
+  std::cout << "***************" << std::endl;
+  std::cout << "Initialized Amesos2" << std::endl;
+  std::cout << "***************" << std::endl;
 #endif
 
 #if defined(HAVE_STRATIMIKOS_EPETRAEXT) && defined(HAVE_STRATIMIKOS_AZTECOO)
@@ -500,11 +520,20 @@ void DefaultLinearSolverBuilder::initializeDefaults()
     Thyra::AztecOOLinearOpWithSolveFactory>(),
     "AztecOO", true
     );
+  std::cout << "***************" << std::endl;
+  std::cout << "Initialized AztecOO" << std::endl;
+  std::cout << "***************" << std::endl;
 #endif
 
-#ifdef HAVE_STRATIMIKOS_AMESOS
+// #ifdef HAVE_STRATIMIKOS_AMESOS
+//   if (Teuchos::GlobalMPISession::getNProc() == 1) {
+//     setDefaultLinearSolveStrategyFactoryName("Amesos");
+//   }
+// #endif
+
+#ifdef HAVE_STRATIMIKOS_AMESOS2
   if (Teuchos::GlobalMPISession::getNProc() == 1) {
-    setDefaultLinearSolveStrategyFactoryName("Amesos");
+    setDefaultLinearSolveStrategyFactoryName("Amesos2");
   }
 #endif
 
