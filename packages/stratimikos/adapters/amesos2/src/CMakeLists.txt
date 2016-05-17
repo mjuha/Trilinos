@@ -1,18 +1,13 @@
+INCLUDE(TrilinosCreateClientTemplateHeaders)
 
+SET(HEADERS "")
+SET(SOURCES "")
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
-
-SET(HEADERS
-  Thyra_Amesos2Types.hpp
-  Thyra_Amesos2LinearOpWithSolve.hpp
-  Thyra_Amesos2LinearOpWithSolveFactory.hpp
-  )
-
-SET(SOURCES
-  Thyra_Amesos2Types.cpp
-  Thyra_Amesos2LinearOpWithSolve.cpp
-  Thyra_Amesos2LinearOpWithSolveFactory.cpp
-  )
+SET_AND_INC_DIRS(DIR ${CMAKE_CURRENT_SOURCE_DIR})
+APPEND_GLOB(HEADERS ${DIR}/*.hpp)
+APPEND_GLOB(SOURCES ${DIR}/*.cpp)
+TRILINOS_CREATE_CLIENT_TEMPLATE_HEADERS(${DIR})
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
 
 TRIBITS_ADD_LIBRARY(
   stratimikosamesos2

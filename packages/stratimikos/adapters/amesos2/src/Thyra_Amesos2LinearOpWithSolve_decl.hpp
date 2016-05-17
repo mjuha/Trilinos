@@ -41,335 +41,258 @@
 // @HEADER
 */
 
-#include "Thyra_Amesos2LinearOpWithSolve.hpp"
-#include "Thyra_EpetraThyraWrappers.hpp"
-#include "Thyra_MultiVectorStdOps.hpp"
-#include "Epetra_MultiVector.h"
-#include "Teuchos_TimeMonitor.hpp"
+#ifndef THYRA_AMESOS2_LINEAR_OP_WITH_SOLVE_DECL_HPP
+#define THYRA_AMESOS2_LINEAR_OP_WITH_SOLVE_DECL_HPP
+
+#include "Thyra_LinearOpWithSolveBase.hpp"
+#include "Thyra_LinearOpSourceBase.hpp"
+#include "Thyra_EpetraLinearOpBase.hpp"
+#include "Epetra_LinearProblem.h"
+#include "Amesos_BaseSolver.h"
 
 
 namespace Thyra {
 
 
-// Constructors/initializers/accessors
-
-
-Amesos2LinearOpWithSolve::Amesos2LinearOpWithSolve():
-  amesosSolverTransp_(Thyra::NOTRANS),
-  amesosSolverScalar_(1.0)
-{}
-
-
-Amesos2LinearOpWithSolve::Amesos2LinearOpWithSolve(
-  const Teuchos::RCP<const LinearOpBase<double> > &fwdOp,
-  const Teuchos::RCP<const LinearOpSourceBase<double> > &fwdOpSrc,
-  const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
-  const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
-  const EOpTransp amesosSolverTransp,
-  const double amesosSolverScalar
-  )
+/** \brief Concrete <tt>LinearOpWithSolveBase</tt> subclass that adapts any
+ * <tt>Amesos_BaseSolver</tt> object.
+ *
+ * See the <tt>LinearOpWithSolveBase</tt> interface for a description of how
+ * to use objects of this type.
+ *
+ * <b>Note:</b> Clients should not generally directly create objects of this
+ * type but instead should use <tt>AmesosLinearOpWithSolveFactory</tt>.  Only
+ * very sophisticated users should ever directly interact with an object
+ * through this subclass interface.
+ *
+ * \ingroup Amesos_Thyra_adapters_grp
+ */
+template<typename Scalar>
+class Amesos2LinearOpWithSolve: virtual public LinearOpWithSolveBase<Scalar>
 {
-  // this->initialize(fwdOp,fwdOpSrc,epetraLP,amesosSolver,
-  //   amesosSolverTransp,amesosSolverScalar);
+public:
+
+  /** @name Constructors/initializers/accessors */
+  //@{
+
+  /** \brief Construct to uninitialized. */
+  Amesos2LinearOpWithSolve();
+
+  /** \brief Calls <tt>this->initialize()</tt>. */
+  Amesos2LinearOpWithSolve(
+    const Teuchos::RCP<const LinearOpBase<Scalar> > &fwdOp,
+    const Teuchos::RCP<const LinearOpSourceBase<Scalar> > &fwdOpSrc,
+    const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
+    const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
+    const EOpTransp amesosSolverTransp,
+    const Scalar amesosSolverScalar
+    );
+
+  /** \brief First initialization.
+   *
+   * \param  fwdOp
+   *           [in] The forward operator for which the factorization exists.
+   * \param  epetraLP
+   *           [in] The <tt>Epetra_LinearProblem</tt> object that was used to
+   *           create the <tt>Amesos_BaseSolver</tt> object
+   *           <tt>*amesosSolver</tt>.  Note that the RHS and the LHS
+   *           multi-vector pointers in this object will be set and unset
+   *           here.
+   * \param  amesosSolver
+   *           [in] Contains the factored, and ready to go,
+   *           <tt>Amesos_BaseSolver</tt> object ready to solve linear system.
+   * \param  amesosSolverTransp
+   *           [in] Determines if the %Amesos solver should be used as its
+   *           transpose or not.
+   * \param  amesosSolverScalar
+   *           [in] Determines the scaling factor associated with the %Amesos
+   *           solver.  The solution to the linear solve is scaled by
+   *           <tt>1/amesosSolverScalar</tt>.
+   *
+   * <b>Preconditions:</b><ul>
+   * <li><tt>fwdOp.get()!=NULL</tt>
+   * <li><tt>epetraLP.get()!=NULL</tt>
+   * <li><tt>amesosSolver.get()!=NULL</tt>
+   * <li><tt>*epetraLP->GetOperator()</tt> is compatible with <tt>*fwdOp</tt>
+   * <li><tt>epetraLP->GetLHS()==NULL</tt>
+   * <li><tt>epetraLP->GetRHS()==NULL</tt>
+   * <li><tt>*amesosSolver</tt> contains the factorization of <tt>*fwdOp</tt> and is
+   *     ready to solve linear systems!
+   * </ul>
+   * 
+   * <b>Postconditions:</b><ul>
+   * <li><tt>this->get_fwdOp().get() == fwdOp.get()</tt>
+   * <li><tt>this->get_epetraLP().get() == epetraLP.get()</tt>
+   * <li><tt>this->get_amesosSolver().get() == amesosSolver.get()</tt>
+   * <li><tt>this->get_amesosSolverTransp() == amesosSolverTransp</tt>
+   * <li><tt>this->get_amesosSolverScalar() == amesosSolverScalar</tt>
+   * </ul>
+   */
+  void initialize(
+    const Teuchos::RCP<const LinearOpBase<Scalar> > &fwdOp,
+    const Teuchos::RCP<const LinearOpSourceBase<Scalar> > &fwdOpSrc,
+    const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
+    const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
+    const EOpTransp amesosSolverTransp,
+    const Scalar amesosSolverScalar
+    );
+
+  /** \brief Extract the <tt>LinearOpSourceBase<double></tt> object so that it can be modified.
+   * 
+   * <b>Postconditions:</b><ul>
+   * <li><tt>return.get()</tt> is the same as <tt>this->get_fwdOpSrc().get()</tt> before call.
+   * <li><tt><tt>this->get_fwdOpSrc().get()==NULL</tt>
+   * </ul>
+   */
+  Teuchos::RCP<const LinearOpSourceBase<Scalar> > extract_fwdOpSrc();
+
+  /** \brief . */
+  Teuchos::RCP<const LinearOpBase<Scalar> > get_fwdOp() const;
+
+  /** \brief . */
+  Teuchos::RCP<const LinearOpSourceBase<Scalar> > get_fwdOpSrc() const;
+
+  /** \brief . */
+  Teuchos::RCP<Epetra_LinearProblem> get_epetraLP() const;
+
+  /** \brief . */
+  Teuchos::RCP<Amesos_BaseSolver> get_amesosSolver() const;
+
+  /** \brief . */
+  EOpTransp get_amesosSolverTransp() const;
+
+  /** \brief . */
+  Scalar get_amesosSolverScalar() const;
+
+  /** \brief Uninitialize.
+   */
+  void uninitialize(
+    Teuchos::RCP<const LinearOpBase<Scalar> > *fwdOp = NULL,
+    Teuchos::RCP<const LinearOpSourceBase<Scalar> > *fwdOpSrc = NULL,
+    Teuchos::RCP<Epetra_LinearProblem> *epetraLP = NULL,
+    Teuchos::RCP<Amesos_BaseSolver> *amesosSolver = NULL,
+    EOpTransp *amesosSolverTransp = NULL,
+    Scalar *amesosSolverScalar = NULL
+    );
+  
+  //@}
+
+  /** @name Overridden public functions from LinearOpBase */
+  //@{
+  /** \brief. */
+  Teuchos::RCP< const VectorSpaceBase<Scalar> > range() const;
+  /** \brief. */
+  Teuchos::RCP< const VectorSpaceBase<Scalar> > domain() const;
+  /** \brief. */
+  Teuchos::RCP<const LinearOpBase<Scalar> > clone() const;
+  //@}
+
+  /** @name Overridden public functions from Teuchos::Describable */
+  //@{
+  /** \brief . */
+  std::string description() const;
+  /** \brief . */
+  void describe(
+    Teuchos::FancyOStream &out,
+    const Teuchos::EVerbosityLevel verbLevel
+    ) const;
+  //@}
+
+protected:
+
+  /** @name Overridden from LinearOpBase  */
+  //@{
+  /** \brief . */
+  virtual bool opSupportedImpl(EOpTransp M_trans) const;
+  /** \brief . */
+  virtual void applyImpl(
+    const EOpTransp M_trans,
+    const MultiVectorBase<Scalar> &X,
+    const Ptr<MultiVectorBase<Scalar> > &Y,
+    const Scalar alpha,
+    const Scalar beta
+    ) const;
+  //@}
+
+  /** @name Overridden from LinearOpWithSolveBase. */
+  //@{
+  /** \brief . */
+  virtual bool solveSupportsImpl(EOpTransp M_trans) const;
+  /** \brief . */
+  virtual bool solveSupportsSolveMeasureTypeImpl(
+    EOpTransp M_trans, const SolveMeasureType& solveMeasureType
+    ) const;
+  /** \brief . */
+  SolveStatus<Scalar> solveImpl(
+    const EOpTransp M_trans,
+    const MultiVectorBase<Scalar> &B,
+    const Ptr<MultiVectorBase<Scalar> > &X,
+    const Ptr<const SolveCriteria<Scalar> > solveCriteria
+    ) const;
+  //@}
+
+private:
+
+  Teuchos::RCP<const LinearOpBase<Scalar> > fwdOp_;
+  Teuchos::RCP<const LinearOpSourceBase<Scalar> > fwdOpSrc_;
+  Teuchos::RCP<Epetra_LinearProblem> epetraLP_;
+  Teuchos::RCP<Amesos_BaseSolver> amesosSolver_;
+  EOpTransp amesosSolverTransp_;
+  Scalar amesosSolverScalar_;
+
+  void assertInitialized() const;
+
+};
+
+// ///////////////////////////
+// Inline members
+
+template<typename Scalar>
+inline
+Teuchos::RCP<const LinearOpBase<Scalar> >
+Amesos2LinearOpWithSolve<Scalar>::get_fwdOp() const
+{
+  return fwdOp_;
 }
 
-
-void Amesos2LinearOpWithSolve::initialize(
-  const Teuchos::RCP<const LinearOpBase<double> > &fwdOp,
-  const Teuchos::RCP<const LinearOpSourceBase<double> > &fwdOpSrc,
-  const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
-  const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
-  const EOpTransp amesosSolverTransp,
-  const double amesosSolverScalar
-  )
+template<typename Scalar>
+inline
+Teuchos::RCP<const LinearOpSourceBase<Scalar> >
+Amesos2LinearOpWithSolve<Scalar>::get_fwdOpSrc() const
 {
-// #ifdef TEUCHOS_DEBUG
-//   TEUCHOS_TEST_FOR_EXCEPT(fwdOp.get()==NULL);
-//   TEUCHOS_TEST_FOR_EXCEPT(fwdOpSrc.get()==NULL);
-//   TEUCHOS_TEST_FOR_EXCEPT(epetraLP.get()==NULL);
-//   TEUCHOS_TEST_FOR_EXCEPT(amesosSolver.get()==NULL);
-//   TEUCHOS_TEST_FOR_EXCEPT(epetraLP->GetLHS()!=NULL);
-//   TEUCHOS_TEST_FOR_EXCEPT(epetraLP->GetRHS()!=NULL);
-// #endif
-//   fwdOp_ = fwdOp;
-//   fwdOpSrc_ = fwdOpSrc;
-//   epetraLP_ = epetraLP;
-//   amesosSolver_ = amesosSolver;
-//   amesosSolverTransp_ = amesosSolverTransp;
-//   amesosSolverScalar_ = amesosSolverScalar;
-//   const std::string fwdOpLabel = fwdOp_->getObjectLabel();
-//   if(fwdOpLabel.length())
-//     this->setObjectLabel( "lows("+fwdOpLabel+")" );
+  return fwdOpSrc_;
 }
 
-
-Teuchos::RCP<const LinearOpSourceBase<double> >
-Amesos2LinearOpWithSolve::extract_fwdOpSrc()
+template<typename Scalar>
+inline
+Teuchos::RCP<Epetra_LinearProblem>
+Amesos2LinearOpWithSolve<Scalar>::get_epetraLP() const
 {
-  Teuchos::RCP<const LinearOpSourceBase<double> >
-    _fwdOpSrc = fwdOpSrc_;
-  fwdOpSrc_ = Teuchos::null;
-  return _fwdOpSrc;
+  return epetraLP_;
 }
 
-
-void Amesos2LinearOpWithSolve::uninitialize(
-  Teuchos::RCP<const LinearOpBase<double> > *fwdOp,
-  Teuchos::RCP<const LinearOpSourceBase<double> > *fwdOpSrc,
-  Teuchos::RCP<Epetra_LinearProblem> *epetraLP,
-  Teuchos::RCP<Amesos_BaseSolver> *amesosSolver,
-  EOpTransp *amesosSolverTransp,
-  double *amesosSolverScalar
-  )
+template<typename Scalar>
+inline
+Teuchos::RCP<Amesos_BaseSolver>
+Amesos2LinearOpWithSolve<Scalar>::get_amesosSolver() const
 {
-
-  // if(fwdOp) *fwdOp = fwdOp_;
-  // if(fwdOpSrc) *fwdOpSrc = fwdOpSrc_;
-  // if(epetraLP) *epetraLP = epetraLP_;
-  // if(amesosSolver) *amesosSolver = amesosSolver_;
-  // if(amesosSolverTransp) *amesosSolverTransp = amesosSolverTransp_;
-  // if(amesosSolverScalar) *amesosSolverScalar = amesosSolverScalar_;
-
-  // fwdOp_ = Teuchos::null;
-  // fwdOpSrc_ = Teuchos::null;
-  // epetraLP_ = Teuchos::null;
-  // amesosSolver_ = Teuchos::null;
-  // amesosSolverTransp_ = NOTRANS;
-  // amesosSolverScalar_ = 0.0;
-
+  return amesosSolver_;
 }
 
-
-// Overridden from LinearOpBase
-
-
-Teuchos::RCP< const VectorSpaceBase<double> >
-Amesos2LinearOpWithSolve::range() const
+template<typename Scalar>
+inline
+EOpTransp Amesos2LinearOpWithSolve<Scalar>::get_amesosSolverTransp() const
 {
-  return ( fwdOp_.get() ? fwdOp_->range() : Teuchos::null );
+  return amesosSolverTransp_;
 }
 
-
-Teuchos::RCP< const VectorSpaceBase<double> >
-Amesos2LinearOpWithSolve::domain() const
+template<typename Scalar>
+inline
+Scalar Amesos2LinearOpWithSolve<Scalar>::get_amesosSolverScalar() const
 {
-  return  ( fwdOp_.get() ? fwdOp_->domain() : Teuchos::null );
+  return amesosSolverScalar_;
 }
 
+} // namespace Thyra
 
-Teuchos::RCP<const LinearOpBase<double> >
-Amesos2LinearOpWithSolve::clone() const
-{
-  return Teuchos::null; // Not supported yet but could be
-}
-
-
-// Overridden from Teuchos::Describable
-
-
-std::string Amesos2LinearOpWithSolve::description() const
-{
-  std::ostringstream oss;
-  oss << Teuchos::Describable::description();
-  if(!is_null(amesosSolver_)) {
-    oss
-      << "{fwdOp="<<fwdOp_->description()
-      << ",amesosSolver="<<typeName(*amesosSolver_)<<"}";
-  }
-  return oss.str();
-}
-
-
-void Amesos2LinearOpWithSolve::describe(
-  Teuchos::FancyOStream &out,
-  const Teuchos::EVerbosityLevel verbLevel
-  ) const
-{
-  // using Teuchos::OSTab;
-  // using Teuchos::typeName;
-  // using Teuchos::describe;
-  // switch(verbLevel) {
-  //   case Teuchos::VERB_DEFAULT:
-  //   case Teuchos::VERB_LOW:
-  //     out << this->description() << std::endl;
-  //     break;
-  //   case Teuchos::VERB_MEDIUM:
-  //   case Teuchos::VERB_HIGH:
-  //   case Teuchos::VERB_EXTREME:
-  //   {
-  //     out
-  //       << Teuchos::Describable::description() << "{"
-  //       << "rangeDim=" << this->range()->dim()
-  //       << ",domainDim="<< this->domain()->dim() << "}\n";
-  //     OSTab tab(out);
-  //     if(!is_null(fwdOp_)) {
-  //       out << "fwdOp = " << describe(*fwdOp_,verbLevel);
-  //     }
-  //     if(!is_null(amesosSolver_)) {
-  //       out << "amesosSolver=" << typeName(*amesosSolver_) << "\n";
-  //     }
-  //     break;
-  //   }
-  //   default:
-  //     TEUCHOS_TEST_FOR_EXCEPT(true); // Should never get here!
-  // }
-}
-
-
-// protected
-
-
-// Overridden from LinearOpBase
-
-
-bool Amesos2LinearOpWithSolve::opSupportedImpl(EOpTransp M_trans) const
-{
-  return ::Thyra::opSupported(*fwdOp_,M_trans);
-}
-
-
-void Amesos2LinearOpWithSolve::applyImpl(
-  const EOpTransp M_trans,
-  const MultiVectorBase<double> &X,
-  const Ptr<MultiVectorBase<double> > &Y,
-  const double alpha,
-  const double beta
-  ) const
-{
-  // Thyra::apply( *fwdOp_, M_trans, X, Y, alpha, beta );
-}
-
-
-// Overridden from LinearOpWithSolveBase
-
-
-bool Amesos2LinearOpWithSolve::solveSupportsImpl(EOpTransp M_trans) const
-{
-  // if (Thyra::real_trans(M_trans) == Thyra::NOTRANS) {
-  //   // Assume every amesos solver supports a basic forward solve!
-  //   return true;
-  // }
-  // // Query the amesos solver to see if it supports the transpose operation.
-  // // NOTE: Amesos_BaseSolver makes you change the state of the object to
-  // // determine if the object supports an adjoint solver.  This is a bad design
-  // // but I have no control over that.  This is why you see this hacked
-  // // oldUseTranspose variable and logic.  NOTE: This function meets the basic
-  // // guarantee but if setUseTransplse(...) throws, then the state of
-  // // UseTranspose() may be different.
-  // const bool oldUseTranspose = amesosSolver_->UseTranspose();
-  // const bool supportsAdjoint = (amesosSolver_->SetUseTranspose(true) == 0);
-  // amesosSolver_->SetUseTranspose(oldUseTranspose);
-  // return supportsAdjoint;
-  return true;
-}
-
-
-bool Amesos2LinearOpWithSolve::solveSupportsSolveMeasureTypeImpl(
-  EOpTransp M_trans, const SolveMeasureType& solveMeasureType
-  ) const
-{
-  return true; // I am a direct solver so I should be able to do it all!
-}
-
-
-SolveStatus<double>
-Amesos2LinearOpWithSolve::solveImpl(
-  const EOpTransp M_trans,
-  const MultiVectorBase<double> &B,
-  const Ptr<MultiVectorBase<double> > &X,
-  const Ptr<const SolveCriteria<double> > solveCriteria
-  ) const
-{
-  // using Teuchos::rcpFromPtr;
-  // using Teuchos::rcpFromRef;
-  // using Teuchos::OSTab;
-
-  // Teuchos::Time totalTimer("");
-  // totalTimer.start(true);
-
-  // THYRA_FUNC_TIME_MONITOR("Stratimikos: AmesosLOWS");
-
-  // Teuchos::RCP<Teuchos::FancyOStream> out = this->getOStream();
-  // Teuchos::EVerbosityLevel verbLevel = this->getVerbLevel();
-  // OSTab tab = this->getOSTab();
-  // if(out.get() && static_cast<int>(verbLevel) > static_cast<int>(Teuchos::VERB_NONE))
-  //   *out << "\nSolving block system using Amesos solver "
-  //        << typeName(*amesosSolver_) << " ...\n\n";
-
-  // //
-  // // Get the op(...) range and domain maps
-  // //
-  // const EOpTransp amesosOpTransp = real_trans(trans_trans(amesosSolverTransp_,M_trans));
-  // const Epetra_Operator *amesosOp = epetraLP_->GetOperator();
-  // const Epetra_Map
-  //   &opRangeMap  = ( amesosOpTransp == NOTRANS
-  //     ? amesosOp->OperatorRangeMap()  : amesosOp->OperatorDomainMap() ),
-  //   &opDomainMap = ( amesosOpTransp == NOTRANS
-  //     ? amesosOp->OperatorDomainMap() : amesosOp->OperatorRangeMap()  );
-
-  // //
-  // // Get Epetra_MultiVector views of B and X
-  // //
-  // Teuchos::RCP<const Epetra_MultiVector>
-  //   epetra_B = get_Epetra_MultiVector(opRangeMap, rcpFromRef(B));
-  // Teuchos::RCP<Epetra_MultiVector>
-  //   epetra_X = get_Epetra_MultiVector(opDomainMap, rcpFromPtr(X));
-
-  // //
-  // // Set B and X in the linear problem
-  // //
-  // epetraLP_->SetLHS(&*epetra_X);
-  // epetraLP_->SetRHS(const_cast<Epetra_MultiVector*>(&*epetra_B));
-  // // Above should be okay but cross your fingers!
-
-  // //
-  // // Solve the linear system
-  // //
-  // const bool oldUseTranspose = amesosSolver_->UseTranspose();
-  // amesosSolver_->SetUseTranspose(amesosOpTransp==TRANS);
-  // const int err = amesosSolver_->Solve();
-  // TEUCHOS_TEST_FOR_EXCEPTION( 0!=err, CatastrophicSolveFailure,
-  //   "Error, the function Solve() on the amesos solver of type\n"
-  //   "\'"<<typeName(*amesosSolver_)<<"\' failed with error code "<<err<<"!"
-  //   );
-  // amesosSolver_->SetUseTranspose(oldUseTranspose);
-
-  // //
-  // // Unset B and X
-  // //
-  // epetraLP_->SetLHS(NULL);
-  // epetraLP_->SetRHS(NULL);
-  // epetra_X = Teuchos::null;
-  // epetra_B = Teuchos::null;
-
-  // //
-  // // Scale X if needed
-  // //
-  // if(amesosSolverScalar_!=1.0)
-  //   Thyra::scale(1.0/amesosSolverScalar_, X);
-
-  // //
-  // // Set the solve status if requested
-  // //
-  // SolveStatus<double> solveStatus;
-  // solveStatus.solveStatus = SOLVE_STATUS_CONVERGED;
-  // solveStatus.achievedTol = SolveStatus<double>::unknownTolerance();
-  // solveStatus.message =
-  //   std::string("Solver ")+typeName(*amesosSolver_)+std::string(" converged!");
-
-  // //
-  // // Report the overall time
-  // //
-  // if(out.get() && static_cast<int>(verbLevel) >= static_cast<int>(Teuchos::VERB_LOW))
-  //   *out
-  //     << "\nTotal solve time = "<<totalTimer.totalElapsedTime()<<" sec\n";
-
-  // return solveStatus;
-
-  SolveStatus<double> solveStatus;
-  solveStatus.solveStatus = SOLVE_STATUS_CONVERGED; 
-  return solveStatus;
-}
-
-
-}	// end namespace Thyra
+#endif	// THYRA_AMESOS_LINEAR_OP_WITH_SOLVE_HPP

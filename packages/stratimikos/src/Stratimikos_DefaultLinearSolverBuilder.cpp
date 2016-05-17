@@ -506,7 +506,7 @@ void DefaultLinearSolverBuilder::initializeDefaults()
 #ifdef HAVE_STRATIMIKOS_AMESOS2
   setLinearSolveStrategyFactory(
     abstractFactoryStd<Thyra::LinearOpWithSolveFactoryBase<double>,
-    Thyra::Amesos2LinearOpWithSolveFactory>(),
+    Thyra::Amesos2LinearOpWithSolveFactory<double>>(),
     "Amesos2", true
     );
   std::cout << "***************" << std::endl;
