@@ -50,7 +50,7 @@
 
 namespace Thyra {
 
-namespace Amesos2 {
+namespace Amesos2Stratimikos {
 
 /** \brief .
 \ingroup Amesos_Thyra_adapters_grp

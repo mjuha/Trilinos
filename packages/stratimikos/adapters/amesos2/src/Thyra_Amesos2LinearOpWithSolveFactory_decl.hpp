@@ -108,8 +108,8 @@ namespace Thyra {
   /** \brief Constructor which sets the defaults.
    */
   Amesos2LinearOpWithSolveFactory(
-    const Amesos2::ESolverType                 solverType  = Amesos2::KLU
-    ,const Amesos2::ERefactorizationPolicy     refactorizationPolicy  = Amesos2::REPIVOT_ON_REFACTORIZATION
+    const Amesos2Stratimikos::ESolverType                 solverType  = Amesos2Stratimikos::KLU
+    ,const Amesos2Stratimikos::ERefactorizationPolicy     refactorizationPolicy  = Amesos2Stratimikos::REPIVOT_ON_REFACTORIZATION
     ,const bool                               throwOnPrecInput       = true
     );
     
@@ -206,8 +206,8 @@ private:
   // /////////////////////////
   // Private data members
 
-  Amesos2::ESolverType                             solverType_;
-  Amesos2::ERefactorizationPolicy                  refactorizationPolicy_;
+  Amesos2Stratimikos::ESolverType                             solverType_;
+  Amesos2Stratimikos::ERefactorizationPolicy                  refactorizationPolicy_;
   bool                                            throwOnPrecInput_;
   Teuchos::RCP<Teuchos::ParameterList>    paramList_;
 

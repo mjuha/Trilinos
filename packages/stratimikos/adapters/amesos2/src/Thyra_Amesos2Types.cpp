@@ -45,45 +45,45 @@
 
 namespace Thyra {
 
-const Amesos2::ESolverType Amesos2::solverTypeValues[Amesos2::numSolverTypes] =
+const Amesos2Stratimikos::ESolverType Amesos2Stratimikos::solverTypeValues[Amesos2Stratimikos::numSolverTypes] =
 {
-  Amesos2::KLU
+  Amesos2Stratimikos::KLU
 };
 
-const char* Amesos2::solverTypeNames[Amesos2::numSolverTypes] =
+const char* Amesos2Stratimikos::solverTypeNames[Amesos2Stratimikos::numSolverTypes] =
 {
   "Klu"
 };
 
-const bool Amesos2::supportsUnsymmetric[Amesos2::numSolverTypes] =
+const bool Amesos2Stratimikos::supportsUnsymmetric[Amesos2Stratimikos::numSolverTypes] =
 {
   true
 };
 
 Teuchos::StringToIntMap
-Amesos2::solverTypeNameToEnumMap(
-  "Amesos2::SolverType"
-  ,Amesos2::numSolverTypes
-  ,Amesos2::solverTypeNames
+Amesos2Stratimikos::solverTypeNameToEnumMap(
+  "Amesos2Stratimikos2::SolverType"
+  ,Amesos2Stratimikos::numSolverTypes
+  ,Amesos2Stratimikos::solverTypeNames
   );
 
-const Amesos2::ERefactorizationPolicy Amesos2::refactorizationPolicyValues[Amesos2::numRefactorizationPolices] =
+const Amesos2Stratimikos::ERefactorizationPolicy Amesos2Stratimikos::refactorizationPolicyValues[Amesos2Stratimikos::numRefactorizationPolices] =
 {
-  Amesos2::REPIVOT_ON_REFACTORIZATION
-  ,Amesos2::NO_PIVOT_ON_REFACTORIZATION
+  Amesos2Stratimikos::REPIVOT_ON_REFACTORIZATION
+  ,Amesos2Stratimikos::NO_PIVOT_ON_REFACTORIZATION
 };
 
-const char* Amesos2::refactorizationPolicyNames[Amesos2::numRefactorizationPolices] =
+const char* Amesos2Stratimikos::refactorizationPolicyNames[Amesos2Stratimikos::numRefactorizationPolices] =
 {
   "RepivotOnRefactorization"
   ,"NoPivotOnRefactorization"
 };
 
 Teuchos::StringToIntMap
-Amesos2::refactorizationPolicyNameToEnumMap(
-  "Amesos2::RefactorizationPolices"
-  ,Amesos2::numRefactorizationPolices
-  ,Amesos2::refactorizationPolicyNames
+Amesos2Stratimikos::refactorizationPolicyNameToEnumMap(
+  "Amesos2Stratimikos2::RefactorizationPolices"
+  ,Amesos2Stratimikos::numRefactorizationPolices
+  ,Amesos2Stratimikos::refactorizationPolicyNames
   );
 
 } // namespace Thyra

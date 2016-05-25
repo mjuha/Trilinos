@@ -42,10 +42,11 @@
 */
 
 #include "Thyra_Amesos2LinearOpWithSolve_decl.hpp"
-#include "Thyra_EpetraThyraWrappers.hpp"
+//#include "Thyra_EpetraThyraWrappers.hpp"
 #include "Thyra_MultiVectorStdOps.hpp"
-#include "Epetra_MultiVector.h"
+//#include "Epetra_MultiVector.h"
 #include "Teuchos_TimeMonitor.hpp"
+#include <Teuchos_RCP.hpp>
 
 
 namespace Thyra {
@@ -57,18 +58,23 @@ template<typename Scalar>
 Amesos2LinearOpWithSolve<Scalar>::Amesos2LinearOpWithSolve():
   amesosSolverTransp_(Thyra::NOTRANS),
   amesosSolverScalar_(1.0)
-{}
+{
+  std::cout << "Amesos2LinearOpWithSolve<Scalar>::Amesos2LinearOpWithSolve" << std::endl;
+}
 
 template<typename Scalar>
 Amesos2LinearOpWithSolve<Scalar>::Amesos2LinearOpWithSolve(
   const Teuchos::RCP<const LinearOpBase<Scalar> > &fwdOp,
   const Teuchos::RCP<const LinearOpSourceBase<Scalar> > &fwdOpSrc,
-  const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
-  const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
+  const Teuchos::RCP<Amesos2::Details::LinearSolverFactory<MV,OP,Scalar>> &tpetraLP,
+  const Teuchos::RCP< Trilinos::Details::LinearSolver< MV, OP, Scalar > > &amesosSolver,
+  // const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
+  // const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
   const EOpTransp amesosSolverTransp,
   const Scalar amesosSolverScalar
   )
 {
+  std::cout << "Amesos2LinearOpWithSolve<Scalar>::Amesos2LinearOpWithSolve(...)" << std::endl;
   // this->initialize(fwdOp,fwdOpSrc,epetraLP,amesosSolver,
   //   amesosSolverTransp,amesosSolverScalar);
 }
@@ -77,12 +83,16 @@ template<typename Scalar>
 void Amesos2LinearOpWithSolve<Scalar>::initialize(
   const Teuchos::RCP<const LinearOpBase<Scalar> > &fwdOp,
   const Teuchos::RCP<const LinearOpSourceBase<Scalar> > &fwdOpSrc,
-  const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
-  const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
+  const Teuchos::RCP<Amesos2::Details::LinearSolverFactory<MV,OP,Scalar>> &tpetraLP,
+  const Teuchos::RCP< Trilinos::Details::LinearSolver< MV, OP, Scalar > > &amesosSolver,
+  // const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
+  // const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
   const EOpTransp amesosSolverTransp,
   const Scalar amesosSolverScalar
   )
 {
+  std::cout << " Amesos2LinearOpWithSolve<Scalar>::initialize" << std::endl;
+
 // #ifdef TEUCHOS_DEBUG
 //   TEUCHOS_TEST_FOR_EXCEPT(fwdOp.get()==NULL);
 //   TEUCHOS_TEST_FOR_EXCEPT(fwdOpSrc.get()==NULL);
@@ -102,7 +112,6 @@ void Amesos2LinearOpWithSolve<Scalar>::initialize(
 //     this->setObjectLabel( "lows("+fwdOpLabel+")" );
 }
 
-
 template<typename Scalar>
 Teuchos::RCP<const LinearOpSourceBase<Scalar> >
 Amesos2LinearOpWithSolve<Scalar>::extract_fwdOpSrc()
@@ -118,13 +127,15 @@ template<typename Scalar>
 void Amesos2LinearOpWithSolve<Scalar>::uninitialize(
   Teuchos::RCP<const LinearOpBase<Scalar> > *fwdOp,
   Teuchos::RCP<const LinearOpSourceBase<Scalar> > *fwdOpSrc,
-  Teuchos::RCP<Epetra_LinearProblem> *epetraLP,
-  Teuchos::RCP<Amesos_BaseSolver> *amesosSolver,
+  Teuchos::RCP<Amesos2::Details::LinearSolverFactory<MV,OP,Scalar>> *tpetraLP,
+  Teuchos::RCP< Trilinos::Details::LinearSolver< MV, OP, Scalar > > *amesosSolver,
+  // Teuchos::RCP<Epetra_LinearProblem> *epetraLP,
+  // Teuchos::RCP<Amesos_BaseSolver> *amesosSolver,
   EOpTransp *amesosSolverTransp,
   Scalar *amesosSolverScalar
   )
 {
-
+  std::cout << " Amesos2LinearOpWithSolve<Scalar>::uninitialize" << std::endl;
   // if(fwdOp) *fwdOp = fwdOp_;
   // if(fwdOpSrc) *fwdOpSrc = fwdOpSrc_;
   // if(epetraLP) *epetraLP = epetraLP_;
@@ -177,11 +188,11 @@ std::string Amesos2LinearOpWithSolve<Scalar>::description() const
 {
   std::ostringstream oss;
   oss << Teuchos::Describable::description();
-  if(!is_null(amesosSolver_)) {
-    oss
-      << "{fwdOp="<<fwdOp_->description()
-      << ",amesosSolver="<<typeName(*amesosSolver_)<<"}";
-  }
+  // if(!is_null(amesosSolver_)) {
+  //   oss
+  //     << "{fwdOp="<<fwdOp_->description()
+  //     << ",amesosSolver="<<typeName(*amesosSolver_)<<"}";
+  // }
   return oss.str();
 }
 
@@ -232,6 +243,7 @@ void Amesos2LinearOpWithSolve<Scalar>::describe(
 template<typename Scalar>
 bool Amesos2LinearOpWithSolve<Scalar>::opSupportedImpl(EOpTransp M_trans) const
 {
+  std::cout << "Amesos2LinearOpWithSolve<Scalar>::opSupportedImpl" << std::endl;
   //return ::Thyra::opSupported(*fwdOp_,M_trans);
   return true;
 }
@@ -246,6 +258,7 @@ void Amesos2LinearOpWithSolve<Scalar>::applyImpl(
   const Scalar beta
   ) const
 {
+  std::cout << "Amesos2LinearOpWithSolve<Scalar>::applyImpl" << std::endl;
   // Thyra::apply( *fwdOp_, M_trans, X, Y, alpha, beta );
 }
 
@@ -256,6 +269,8 @@ void Amesos2LinearOpWithSolve<Scalar>::applyImpl(
 template<typename Scalar>
 bool Amesos2LinearOpWithSolve<Scalar>::solveSupportsImpl(EOpTransp M_trans) const
 {
+  std::cout << "Amesos2LinearOpWithSolve<Scalar>::solveSupportsImpl" << std::endl;
+
   // if (Thyra::real_trans(M_trans) == Thyra::NOTRANS) {
   //   // Assume every amesos solver supports a basic forward solve!
   //   return true;
@@ -293,6 +308,22 @@ Amesos2LinearOpWithSolve<Scalar>::solveImpl(
   const Ptr<const SolveCriteria<Scalar> > solveCriteria
   ) const
 {
+  std::cout << "Amesos2LinearOpWithSolve<Scalar>::solveImpl" << std::endl;
+
+
+  Amesos2::Details::LinearSolverFactory<MV,OP,Scalar> linearsolverfactory;
+  Teuchos::RCP< Trilinos::Details::LinearSolver<MV,OP,Scalar> > solver = linearsolverfactory.getLinearSolver("klu2");
+
+  typedef Thyra::TpetraOperatorVectorExtraction<Scalar,LO,GO,NT> TOE;
+
+  Teuchos::RCP< Thyra::MultiVectorBase<Scalar> > Bptr = Teuchos::rcp_const_cast< Thyra::MultiVectorBase<Scalar> >(Teuchos::rcpFromRef(B));
+
+  Teuchos::RCP< Tpetra::MultiVector<Scalar,LO,GO,NT> > Btpetra = TOE::getTpetraMultiVector(Bptr);
+
+  Teuchos::RCP< Tpetra::MultiVector<Scalar,LO,GO,NT> > xtpetra = TOE::getTpetraMultiVector(Teuchos::rcpFromPtr(X));
+
+
+
   // using Teuchos::rcpFromPtr;
   // using Teuchos::rcpFromRef;
   // using Teuchos::OSTab;
