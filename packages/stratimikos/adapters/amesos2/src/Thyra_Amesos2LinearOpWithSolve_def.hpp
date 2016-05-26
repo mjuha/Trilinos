@@ -310,6 +310,11 @@ Amesos2LinearOpWithSolve<Scalar>::solveImpl(
 
   Teuchos::RCP< Tpetra_MultiVector > Xtpetra = ConverterT::getTpetraMultiVector(Teuchos::rcpFromPtr(X));
 
+  Teuchos::RCP<Teuchos::FancyOStream> 
+    out = Teuchos::VerboseObjectBase::getDefaultOStream();
+  
+  *out << "Solving system using Amesos2 = KLU2\n";
+
   amesosSolver_->solve(*Xtpetra,*Btpetra);
 
   SolveStatus<double> solveStatus;

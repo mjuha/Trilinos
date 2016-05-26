@@ -289,22 +289,22 @@ Piro::TrapezoidRuleSolver<Scalar, LocalOrdinal, GlobalOrdinal, Node>::evalModelI
   Scalar nrm = norm_2(*v);
   *out << "Initial Velocity = " << nrm << std::endl;
 
-   //calculate intial acceleration using small time step (1.0e-3*delta_t)
-   // AGS: Check this for inital velocity
-   {
-     Scalar pert= 1.0e6 * 4.0 / (delta_t * delta_t);
-     assign(x_pred_a.ptr(), *x);
-     assign(x_pred_v.ptr(), *x);
+   // //calculate intial acceleration using small time step (1.0e-3*delta_t)
+   // // AGS: Check this for inital velocity
+   // {
+   //   Scalar pert= 1.0e6 * 4.0 / (delta_t * delta_t);
+   //   assign(x_pred_a.ptr(), *x);
+   //   assign(x_pred_v.ptr(), *x);
 
-     Vp_StV(x_pred_v.ptr(), sqrt(pert), *v);
-     model->injectData(x_pred_a, x_pred_a, pert, x_pred_v, sqrt(pert), t);
+   //   Vp_StV(x_pred_v.ptr(), sqrt(pert), *v);
+   //   model->injectData(x_pred_a, x_pred_a, pert, x_pred_v, sqrt(pert), t);
 
-     noxSolver->evalModel(nox_inargs, nox_outargs);
+   //   noxSolver->evalModel(nox_inargs, nox_outargs);
 
-     V_StVpStV(a.ptr(), pert, *gx_out,  -pert, *x_pred_a);
-     nrm = norm_2(*a);
-     *out << "Calculated a_init = " << nrm << std::endl;
-   }
+   //   V_StVpStV(a.ptr(), pert, *gx_out,  -pert, *x_pred_a);
+   //   nrm = norm_2(*a);
+   //   *out << "Calculated a_init = " << nrm << std::endl;
+   // }
 
    // Start integration loop
    Scalar fdt2 = 4.0 / (delta_t * delta_t);

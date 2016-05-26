@@ -152,6 +152,9 @@ void Amesos2LinearOpWithSolveFactory<Scalar>::initializeOp(
   TEUCHOS_TEST_FOR_EXCEPT(fwdOpSrc->getOp().get()==NULL);
   RCP<const LinearOpBase<Scalar> > fwdOp = fwdOpSrc->getOp();
 
+  Teuchos::RCP<Teuchos::FancyOStream> 
+    out = Teuchos::VerboseObjectBase::getDefaultOStream();
+
   //std::cout << "Unwrap TpetraOperator" << std::endl;
   //
   // Unwrap and get the forward Tpetra::Operator object
@@ -200,6 +203,7 @@ void Amesos2LinearOpWithSolveFactory<Scalar>::initializeOp(
     amesosSolver->setMatrix(tpetraFwdOp);
     
     // Do the initial factorization
+    *out << "Performing factorization ...\n";
     amesosSolver->symbolic();
     amesosSolver->numeric();
     
@@ -220,9 +224,10 @@ void Amesos2LinearOpWithSolveFactory<Scalar>::initializeOp(
     
     // set 
     amesosSolver->setMatrix(tpetraFwdOp);
-    
+
     // Do the initial factorization
-    amesosSolver->symbolic();
+    *out << "Performing factorization ...\n";
+    //amesosSolver->symbolic();
     amesosSolver->numeric();
 
     // Initialize the LOWS object and we are done!
