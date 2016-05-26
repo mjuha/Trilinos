@@ -53,8 +53,6 @@
 #include "Thyra_TpetraLinearOp.hpp"
 #include "Thyra_TpetraThyraWrappers.hpp"
 #include "Thyra_DefaultDiagonalLinearOp.hpp"
-#include "Trilinos_Details_LinearSolver.hpp"
-#include "Trilinos_Details_LinearSolverFactory.hpp"
 #include "Teuchos_dyn_cast.hpp"
 #include "Teuchos_TimeMonitor.hpp"
 #include "Teuchos_TypeNameTraits.hpp"
@@ -159,6 +157,32 @@ bool Amesos2LinearOpWithSolveFactory<Scalar>::isCompatible(
 {
   std::cout << " Amesos2LinearOpWithSolveFactory<Scalar>::isCompatible" << std::endl;
 
+  Teuchos::RCP<const LinearOpBase<Scalar> >
+    fwdOp = fwdOpSrc.getOp();
+  Teuchos::RCP< const Tpetra_Operator > tpetraFwdOp;
+  tpetraFwdOp = ConverterT::getConstTpetraOperator(fwdOp);
+
+  if ( ! dynamic_cast<const Tpetra_CrsMatrix * >(&*tpetraFwdOp) )
+    return false;
+  return true;
+
+
+
+ // RCP<const Epetra_Operator> epetraFwdOp;
+ //  EOpTransp epetraFwdOpTransp;
+ //  EApplyEpetraOpAs epetraFwdOpApplyAs;
+ //  EAdjointEpetraOp epetraFwdOpAdjointSupport;
+ //  double epetraFwdOpScalar;
+ //  epetraFwdOpViewExtractor_->getEpetraOpView(
+ //    fwdOp,
+ //    outArg(epetraFwdOp), outArg(epetraFwdOpTransp),
+ //    outArg(epetraFwdOpApplyAs), outArg(epetraFwdOpAdjointSupport),
+ //    outArg(epetraFwdOpScalar)
+ //    );
+ //  if( !dynamic_cast<const Epetra_RowMatrix*>(&*epetraFwdOp) )
+ //    return false;
+ //  return true;
+
   // using Teuchos::outArg;
   // RCP<const LinearOpBase<double> >
   //   fwdOp = fwdOpSrc.getOp();
@@ -177,7 +201,7 @@ bool Amesos2LinearOpWithSolveFactory<Scalar>::isCompatible(
   //   return false;
   // return true;
 
-  return true;
+  //return true;
 }
 
 template<typename Scalar>
@@ -205,10 +229,90 @@ void Amesos2LinearOpWithSolveFactory<Scalar>::initializeOp(
   TEUCHOS_TEST_FOR_EXCEPT(fwdOpSrc.get()==NULL);
   TEUCHOS_TEST_FOR_EXCEPT(fwdOpSrc->getOp().get()==NULL);
   RCP<const LinearOpBase<Scalar> > fwdOp = fwdOpSrc->getOp();
+
+  std::cout << "Unwrap TpetraOperator" << std::endl;
+  //
+  // Unwrap and get the forward Tpetra::Operator object
+  //
+  RCP< const Tpetra_Operator > tpetraFwdOp;
+  std::cout << "Tpetra operator" << std::endl;
+  tpetraFwdOp = ConverterT::getConstTpetraOperator(fwdOp);
+  std::cout << "amesos operator" << std::endl;
   // Get the Amesos2LinearOpWithSolve object
   Amesos2LinearOpWithSolve<Scalar>
     *amesosOp = &Teuchos::dyn_cast<Amesos2LinearOpWithSolve<Scalar>>(*Op);
- 
+
+  //
+  // Determine if we must start over or not
+  //
+  bool startOver = ( amesosOp->get_amesosSolver()==Teuchos::null );
+  if(!startOver) 
+    {
+      std::cout << "Start over 2" << std::endl;
+      RCP< const Tpetra_Operator > tpetraOp = amesosOp->get_amesosSolver()->getMatrix();
+      startOver =
+      	(
+      	  tpetraFwdOp.get() != tpetraOp.get()
+	  // We must start over if the matrix object changes.  This is a
+	  // weakness of Amesos but there is nothing I can do about this right
+	  // now!
+	);
+    }
+  //
+  // Update the amesos solver
+  //
+  if(startOver) {
+    std::cout << "Start over" << std::endl;
+    //
+    // This LOWS object has not be initialized yet or is not compatible with the existing
+    // 
+    // so this is where we setup everything from the ground up.
+    //
+    // Create the linear problem factory
+    Amesos2::Details::LinearSolverFactory<Tpetra_MultiVector,Tpetra_Operator,Scalar> linearsolverfactory;
+      
+    // Create the concrete solver
+    Teuchos::RCP< Trilinos::Details::LinearSolver<Tpetra_MultiVector,Tpetra_Operator,Scalar> > amesosSolver = linearsolverfactory.getLinearSolver("klu2");
+
+    // set 
+    amesosSolver->setMatrix(tpetraFwdOp);
+    
+    // Do the initial factorization
+    amesosSolver->symbolic();
+    amesosSolver->numeric();
+    
+    
+    // Initialize the LOWS object and we are done!
+    amesosOp->initialize(fwdOp,fwdOpSrc,amesosSolver);
+  }
+  else {
+    std::cout << "Start over 3" << std::endl;
+    //
+    // This LOWS object has already be initialized once so we must just reset
+    // the matrix and refactor it.
+    //
+    // Get non-const pointers to the linear problem and the amesos solver.
+    // These const-casts are just fine since the amesosOp in non-const.
+    Teuchos::RCP< Trilinos::Details::LinearSolver<Tpetra_MultiVector,Tpetra_Operator,Scalar> >
+      amesosSolver = amesosOp->get_amesosSolver();
+    
+    // set 
+    amesosSolver->setMatrix(tpetraFwdOp);
+    
+    // Do the initial factorization
+    amesosSolver->symbolic();
+    amesosSolver->numeric();
+
+    // Initialize the LOWS object and we are done!
+    amesosOp->initialize(fwdOp,fwdOpSrc,amesosSolver);
+
+  }
+  amesosOp->setOStream(this->getOStream());
+  amesosOp->setVerbLevel(this->getVerbLevel());
+
+  
+
+
 
 //   //
 //   // Unwrap and get the forward Epetra_Operator object

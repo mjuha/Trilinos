@@ -66,8 +66,8 @@ template<typename Scalar>
 Amesos2LinearOpWithSolve<Scalar>::Amesos2LinearOpWithSolve(
   const Teuchos::RCP<const LinearOpBase<Scalar> > &fwdOp,
   const Teuchos::RCP<const LinearOpSourceBase<Scalar> > &fwdOpSrc,
-  const Teuchos::RCP<Amesos2::Details::LinearSolverFactory<MV,OP,Scalar>> &tpetraLP,
-  const Teuchos::RCP< Trilinos::Details::LinearSolver< MV, OP, Scalar > > &amesosSolver,
+  const Teuchos::RCP<Amesos2::Details::LinearSolverFactory<Tpetra_MultiVector,Tpetra_Operator,Scalar>> &tpetraLP,
+  const Teuchos::RCP< Trilinos::Details::LinearSolver< Tpetra_MultiVector,Tpetra_Operator, Scalar > > &amesosSolver,
   // const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
   // const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
   const EOpTransp amesosSolverTransp,
@@ -83,12 +83,9 @@ template<typename Scalar>
 void Amesos2LinearOpWithSolve<Scalar>::initialize(
   const Teuchos::RCP<const LinearOpBase<Scalar> > &fwdOp,
   const Teuchos::RCP<const LinearOpSourceBase<Scalar> > &fwdOpSrc,
-  const Teuchos::RCP<Amesos2::Details::LinearSolverFactory<MV,OP,Scalar>> &tpetraLP,
-  const Teuchos::RCP< Trilinos::Details::LinearSolver< MV, OP, Scalar > > &amesosSolver,
+  const Teuchos::RCP< Trilinos::Details::LinearSolver< Tpetra_MultiVector,Tpetra_Operator, Scalar > > &amesosSolver
   // const Teuchos::RCP<Epetra_LinearProblem> &epetraLP,
   // const Teuchos::RCP<Amesos_BaseSolver> &amesosSolver,
-  const EOpTransp amesosSolverTransp,
-  const Scalar amesosSolverScalar
   )
 {
   std::cout << " Amesos2LinearOpWithSolve<Scalar>::initialize" << std::endl;
@@ -101,15 +98,12 @@ void Amesos2LinearOpWithSolve<Scalar>::initialize(
 //   TEUCHOS_TEST_FOR_EXCEPT(epetraLP->GetLHS()!=NULL);
 //   TEUCHOS_TEST_FOR_EXCEPT(epetraLP->GetRHS()!=NULL);
 // #endif
-//   fwdOp_ = fwdOp;
-//   fwdOpSrc_ = fwdOpSrc;
-//   epetraLP_ = epetraLP;
-//   amesosSolver_ = amesosSolver;
-//   amesosSolverTransp_ = amesosSolverTransp;
-//   amesosSolverScalar_ = amesosSolverScalar;
-//   const std::string fwdOpLabel = fwdOp_->getObjectLabel();
-//   if(fwdOpLabel.length())
-//     this->setObjectLabel( "lows("+fwdOpLabel+")" );
+  fwdOp_ = fwdOp;
+  fwdOpSrc_ = fwdOpSrc;
+  amesosSolver_ = amesosSolver;
+  const std::string fwdOpLabel = fwdOp_->getObjectLabel();
+  if(fwdOpLabel.length())
+    this->setObjectLabel( "lows("+fwdOpLabel+")" );
 }
 
 template<typename Scalar>
@@ -127,8 +121,8 @@ template<typename Scalar>
 void Amesos2LinearOpWithSolve<Scalar>::uninitialize(
   Teuchos::RCP<const LinearOpBase<Scalar> > *fwdOp,
   Teuchos::RCP<const LinearOpSourceBase<Scalar> > *fwdOpSrc,
-  Teuchos::RCP<Amesos2::Details::LinearSolverFactory<MV,OP,Scalar>> *tpetraLP,
-  Teuchos::RCP< Trilinos::Details::LinearSolver< MV, OP, Scalar > > *amesosSolver,
+  Teuchos::RCP<Amesos2::Details::LinearSolverFactory<Tpetra_MultiVector,Tpetra_Operator,Scalar>> *tpetraLP,
+  Teuchos::RCP< Trilinos::Details::LinearSolver< Tpetra_MultiVector,Tpetra_Operator, Scalar > > *amesosSolver,
   // Teuchos::RCP<Epetra_LinearProblem> *epetraLP,
   // Teuchos::RCP<Amesos_BaseSolver> *amesosSolver,
   EOpTransp *amesosSolverTransp,
@@ -311,16 +305,15 @@ Amesos2LinearOpWithSolve<Scalar>::solveImpl(
   std::cout << "Amesos2LinearOpWithSolve<Scalar>::solveImpl" << std::endl;
 
 
-  Amesos2::Details::LinearSolverFactory<MV,OP,Scalar> linearsolverfactory;
-  Teuchos::RCP< Trilinos::Details::LinearSolver<MV,OP,Scalar> > solver = linearsolverfactory.getLinearSolver("klu2");
-
-  typedef Thyra::TpetraOperatorVectorExtraction<Scalar,LO,GO,NT> TOE;
+  //typedef Thyra::TpetraOperatorVectorExtraction<Scalar,LO,GO,NT> TOE;
 
   Teuchos::RCP< Thyra::MultiVectorBase<Scalar> > Bptr = Teuchos::rcp_const_cast< Thyra::MultiVectorBase<Scalar> >(Teuchos::rcpFromRef(B));
 
-  Teuchos::RCP< Tpetra::MultiVector<Scalar,LO,GO,NT> > Btpetra = TOE::getTpetraMultiVector(Bptr);
+  Teuchos::RCP< Tpetra_MultiVector > Btpetra = ConverterT::getTpetraMultiVector(Bptr);
 
-  Teuchos::RCP< Tpetra::MultiVector<Scalar,LO,GO,NT> > xtpetra = TOE::getTpetraMultiVector(Teuchos::rcpFromPtr(X));
+  Teuchos::RCP< Tpetra_MultiVector > Xtpetra = ConverterT::getTpetraMultiVector(Teuchos::rcpFromPtr(X));
+
+  amesosSolver_->solve(*Xtpetra,*Btpetra);
 
 
 

@@ -45,13 +45,17 @@
 #define THYRA_AMESOS2_LINEAR_OP_WITH_SOLVE_FACTORY_DECL_HPP
 
 #include "Thyra_LinearOpWithSolveFactoryBase.hpp"
+#include "Thyra_TpetraThyraWrappers.hpp"
 #include "Thyra_Amesos2Types.hpp"
+#include "Amesos2_DataTypes.hpp"
 //#include "Amesos_BaseSolver.h"
 #include "Amesos2.hpp"
 #include "Amesos2_Version.hpp"
 //#include "Thyra_EpetraOperatorViewExtractorBase.hpp"
 #include "Teuchos_StandardMemberCompositionMacros.hpp"
 #include "Teuchos_StandardCompositionMacros.hpp"
+#include "Trilinos_Details_LinearSolver.hpp"
+#include "Trilinos_Details_LinearSolverFactory.hpp"
 
 namespace Thyra {
 
@@ -99,6 +103,12 @@ namespace Thyra {
 
   //@}
 
+  // typedef Tpetra::CrsMatrix<Scalar> MAT;
+  // typedef Tpetra::MultiVector<Scalar> MV;
+  // typedef Tpetra::Operator<Scalar> OP;
+  // typedef long long int GO;
+  // typedef int LO;
+
   /** \name Constructors/initializers/accessors */
   //@{
 
@@ -127,6 +137,9 @@ namespace Thyra {
 
   /** @name Overridden public functions from LinearOpWithSolveFactoryBase */
   //@{
+
+  // This will be used to extract the Tpetra operator that later will be cast into a Tpetra_CrsMatrix
+  //typedef Thyra::TpetraOperatorVectorExtraction<Scalar> converterT;
 
   /** \brief Returns true if <tt>dynamic_cast<const
    * EpetraLinearOpBase*>(fwdOpSrc)!=NULL</tt> .
