@@ -184,6 +184,7 @@ void run(const UserInputForTests &uinput,
     if(rank == 0) std::cerr << "Zoltan2 problem parameters not provided" << std::endl;
     return;
   }
+
   if(rank == 0)
     cout << "\n\nRunning test: " << problem_parameters.name() << endl;
   
@@ -247,14 +248,9 @@ void run(const UserInputForTests &uinput,
   ////////////////////////////////////////////////////////////
   
   comparison_source->timers["solve time"]->start();
-  RCP<EvaluatePartition<basic_id_t> >metricObject;
+  
   if (problem_kind == "partitioning") {
     reinterpret_cast<partitioning_problem_t *>(problem)->solve();
-    metricObject =
-      rcp(Zoltan2_TestingFramework::EvaluatePartitionFactory::
-	  newEvaluatePartition(reinterpret_cast<partitioning_problem_t*>
-			       (problem), adapter_name, ia,
-			       &zoltan2_parameters));
   } else if (problem_kind == "ordering") {
     reinterpret_cast<ordering_problem_t *>(problem)->solve();
   } else if (problem_kind == "coloring") {
@@ -263,8 +259,9 @@ void run(const UserInputForTests &uinput,
   comparison_source->timers["solve time"]->stop();
   if (rank == 0)
     cout << problem_kind + "Problem solved." << endl;
-  
-//#define KDDKDD
+ 
+
+#define KDDKDD
 #ifdef KDDKDD
   {
   const base_adapter_t::gno_t *kddIDs = NULL;
@@ -277,6 +274,26 @@ void run(const UserInputForTests &uinput,
                 << std::endl;
     }
   }
+  if (adapter_name == "XpetraCrsGraph") {
+    typedef xcrsGraph_adapter::lno_t lno_t;
+    typedef xcrsGraph_adapter::gno_t gno_t;
+    typedef xcrsGraph_adapter::scalar_t scalar_t;
+    int ewgtDim = reinterpret_cast<const xcrsGraph_adapter *>(ia)->getNumWeightsPerEdge();
+    lno_t localNumObj = reinterpret_cast<const xcrsGraph_adapter *>(ia)->getLocalNumVertices();
+    const gno_t *vertexIds;
+    reinterpret_cast<const xcrsGraph_adapter *>(ia)->getVertexIDsView(vertexIds);
+    const lno_t *offsets;
+    const gno_t *adjIds;
+    reinterpret_cast<const xcrsGraph_adapter *>(ia)->getEdgesView(offsets, adjIds);
+    for (int edim = 0; edim < ewgtDim; edim++) {
+      const scalar_t *weights;
+      int stride=0;
+      reinterpret_cast<xcrsGraph_adapter *>(ia)->getEdgeWeightsView(weights, stride, edim);
+      for (lno_t i=0; i < localNumObj; i++)
+	for (lno_t j=offsets[i], k=0; j < offsets[i + 1]; j++, k++)
+	  printf("%d %d %d %f\n", edim, vertexIds[i], adjIds[j], weights[stride*k]);
+    }
+  }
 #endif
 
   ////////////////////////////////////////////////////////////
@@ -287,49 +304,41 @@ void run(const UserInputForTests &uinput,
   // RCP<const Zoltan2::Environment> env =
   //   reinterpret_cast<partitioning_problem_t *>(problem)->getEnvironment();
 
-  if( problem_parameters.isParameter("Metrics")) {
-    // calculate pass fail based on imbalance
-    if(rank == 0) cout << "Analyzing metrics..." << endl;
-    if(rank == 0 && problem_kind == "partitioning") {
-      std::cout << "Print the " << problem_kind << "problem's metrics:" << std::endl; 
-      metricObject->printMetrics(cout);
-    }
+ // get metric object
+  RCP<EvaluatePartition<basic_id_t> >metricObject =
+      rcp(Zoltan2_TestingFramework::EvaluatePartitionFactory::
+    newEvaluatePartition(reinterpret_cast<partitioning_problem_t*>
+             (problem), adapter_name, ia,
+             &zoltan2_parameters));
+  
+  std::string metric_types[] = {"Metrics", "Graph Metrics"};
+  for (auto metric_type : metric_types) {
+    if( problem_parameters.isParameter(metric_type)) {
+      // calculate pass fail based on imbalance
+      if(rank == 0) cout << "Analyzing " << metric_type << endl;
+      if(rank == 0) {
+        std::cout << metric_type << " for " << problem_kind << ":" << std::endl; 
+        if (metric_type == "Metrics")
+          metricObject->printMetrics(cout);
+        else if (metric_type == "Graph Metrics")
+          metricObject->printGraphMetrics(cout);
+      }
 
-    std::ostringstream msg;
-    auto metricsPlist = problem_parameters.sublist("Metrics");
-    bool all_tests_pass = false;
-    
-    if (problem_kind == "partitioning") {
+      std::ostringstream msg;
+      auto metricsPlist = problem_parameters.sublist(metric_type); // get the metrics plist
+      bool all_tests_pass = false;
       all_tests_pass
-      = MetricAnalyzer<partitioning_problem_t>::analyzeMetrics( metricsPlist,
-                                                                reinterpret_cast<const partitioning_problem_t *>(const_cast<base_problem_t *>(problem)),
-								metricObject,
-                                                                comm,
-                                                                msg); 
-    } else if (problem_kind == "ordering") {
-      all_tests_pass
-      = MetricAnalyzer<ordering_problem_t>::analyzeMetrics( metricsPlist,
-                                                            reinterpret_cast<const ordering_problem_t *>(const_cast<base_problem_t *>(problem)),
-                                                            comm,
-                                                            msg); 
-    } else if (problem_kind == "coloring") {
-      all_tests_pass
-      = MetricAnalyzer<coloring_problem_t>::analyzeMetrics( metricsPlist,
-                                                            reinterpret_cast<const coloring_problem_t *>(const_cast<base_problem_t *>(problem)),
-                                                            comm,
-                                                            msg); 
-    }
-    std::cout << msg.str() << std::endl;
-    if(rank == 0 && all_tests_pass) cout << "All tests PASSED." << endl;
-    else if(rank == 0) cout << "Testing FAILED." << endl;
-    
-  }else if(rank == 0 && problem_kind == "partitioning") {
-    // BDD for debugging
-    cout << "No test metrics requested. Problem Metrics are: " << endl;
-    metricObject->printMetrics(cout);
-    cout << "PASSED." << endl;
+      = MetricAnalyzer::analyzeMetrics( metricsPlist,
+                                        metricObject,
+                                        comm,
+                                        msg); 
+
+      std::cout << msg.str() << std::endl;
+      if(rank == 0 && all_tests_pass) cout << "All " << metric_type  << " tests PASSED." << endl;
+      else if (rank == 0) cout << "One or more " << metric_type << " tests FAILED." << endl;
+    } else if (rank == 0) cout << metric_type  << " analysis unrequested. PASSED." << endl;
   }
-
+  
 #define BDD
 #ifdef BDD 
   if (problem_kind == "ordering") {

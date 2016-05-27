@@ -10,6 +10,7 @@
 /*Kokkos Includes*/
 #ifdef BASKER_KOKKOS
 #include <Kokkos_Core.hpp>
+#include <impl/Kokkos_Timer.hpp>
 #else
 #include <omp.h>
 #endif
@@ -80,7 +81,51 @@ namespace BaskerNS
     }//end operator()
 
   };//end kokkos_order_init_2D
+  
+  //Kokkos struct for reinit for refactor
+  template <class Int, class Entry, class Exe_Space>
+  struct kokkos_reset_factor
+  {
+    #ifdef BASKER_KOKKOS
+    typedef Exe_Space                    execution_space;
+    typedef Kokkos::TeamPolicy<Exe_Space>    TeamPolicy;
+    typedef typename TeamPolicy::member_type  TeamMember;
+    #endif
 
+    Basker<Int,Entry,Exe_Space>  *basker;
+
+    kokkos_reset_factor()
+    {}
+    
+    kokkos_reset_factor(Basker<Int,Entry,Exe_Space> *_b)
+    {
+      basker = _b;
+    }//end kokkos_order_init_2D()
+
+    BASKER_INLINE
+    #ifdef BASKER_KOKKOS
+    void operator()(const TeamMember &thread) const
+    #else
+    void operator()(Int kid) const
+    #endif
+    {
+      #ifdef BASKER_KOKKOS
+      Int kid = (Int)(thread.league_rank()*thread.team_size() +
+		      thread.team_rank());
+      #endif
+
+	{
+	  if(basker->btf_tabs_offset!=0)
+	    {
+	      basker->t_reset_ND_factor(kid);
+	    }
+	  if(basker->btf_nblks > 1)
+	    {
+	      basker->t_reset_BTF_factor(kid);
+	    }
+	}
+    }//end operator()
+  };//end kokkos_reset_factor
 
 
   //--------------------MEMORY RELATED UTIL ------------------//
@@ -242,6 +287,123 @@ namespace BaskerNS
     #endif
   }//end init_value entry 1d 
 
+  template <class Int, class Entry, class Exe_Space>
+  BASKER_INLINE
+  void Basker<Int,Entry,Exe_Space>::t_reset_BTF_factor(Int kid)
+  {
+    Int chunk_start = btf_schedule(kid);
+    Int chunk_end   = btf_schedule(kid+1);
+    Int chunk_size = chunk_end-chunk_start;
+    
+    if(chunk_size > 0)
+      {
+	for(Int b=chunk_start; b < chunk_end; b++)
+	  {
+	    BASKER_MATRIX &L = LBTF(b-btf_tabs_offset);
+	    L.clear_pend();
+	    L.nnz = L.mnnz;
+	  }//end-for over chunck
+      }
+  }//end t_reset_BTF_factor
+
+  template <class Int, class Entry, class Exe_Space>
+  BASKER_INLINE
+  void Basker<Int,Entry,Exe_Space>::t_reset_ND_factor(Int kid)
+  {
+    // printf("\n\n reset ND factor called \n");
+    
+    //L
+    for(Int lvl = 0; lvl < tree.nlvls+1; lvl++)
+      {
+	if(kid%((Int)pow(2,lvl)) == 0)
+	  {
+	    Int b = S(lvl)(kid);
+
+	    for(Int row = 0; row < LL_size(b); row++)
+	      {
+		
+                #ifdef BASKER_DEBUG_INIT
+		printf("L Factor Init: %d %d , kid: %d, nnz: %ld \n",
+		       b, row, kid, LL[b][row].nnz);
+		#endif
+		
+		//printf("clean pend called %d %d \n",
+		//     b, row);
+		LL(b)(row).clear_pend();
+		LL(b)(row).nnz = LL(b)(row).mnnz;
+
+	      }//end over all row
+	  }//end select which thread
+      }//end for over all lvl
+
+    for(Int lvl = 0; lvl < tree.nlvls+1; lvl++)
+      {
+	if(kid%((Int)pow(2,lvl)) == 0)
+	  {
+	    Int b = S(lvl)(kid);
+	    
+	    #ifdef BASKER_DEBUG_INIT
+	    printf("U Factor init: %d %d, nnz: %ld \n",
+		   b, LU_size[b]-1, 
+		   LU[b][LU_size[b]-1].nnz);
+	    #endif
+	    
+	    //LU(b)(LU_size(b)-1).nnz = 0;
+	    for(Int kk = 0; kk < LU(b)(LU_size(b)-1).ncol+1;
+		kk++)
+	      {
+		LU(b)(LU_size(b)-1).col_ptr(kk) = 0;
+	      }
+
+	    /*
+	    printf("flipU1 (%d,%d) %d %d \n",
+		   b, LU_size(b)-1,
+		   LU(b)(LU_size(b)-1).nnz,
+		   LU(b)(LU_size(b)-1).mnnz);
+	    */
+	    LU(b)(LU_size(b)-1).nnz = LU(b)(LU_size(b)-1).mnnz;
+
+
+	    for(Int l = lvl+1; l < tree.nlvls+1; l++)
+	      {
+		Int U_col = S(l)(kid);
+
+		Int my_row_leader = find_leader(kid, l-1);
+		Int my_new_row = 
+		  b - S(0)(my_row_leader);
+
+		Int U_row = (l==1)?(kid%2):S(lvl)(kid)%LU_size(U_col);
+		
+		//JDB TEST PASS
+		U_row = my_new_row;
+		
+		#ifdef BASKER_DEBUG_INIT
+		printf("Init U: %d %d lvl: %d l: %d kid: %d nnz: %ld \n",
+		       U_col, U_row, lvl, l, kid, 
+		       LU[U_col][U_row].nnz);
+		#endif
+
+		for(Int kk = 0; kk < LU(U_col)(U_row).ncol+1; 
+		    kk++)
+		  {
+		    LU(U_col)(U_row).col_ptr(kk) = 0;
+		  }
+		/*
+		printf("flipU (%d,%d) %d %d \n",
+		       U_col, U_col,
+		       LU(U_col)(U_row).nnz,
+		       LU(U_col)(U_row).mnnz);
+		*/
+		LU(U_col)(U_row).nnz = LU(U_col)(U_row).mnnz;
+
+		//LU(U_col)(U_row).nnz = 0;
+	      }//over inner lvls
+	  }//if KID
+
+      }//end over all lvls
+  
+  }//end t_reset_factor
+
   //--------------------  Workspace -------------------------//
   template <class Int, class Entry, class Exe_Space>
   BASKER_INLINE
@@ -277,6 +439,7 @@ namespace BaskerNS
 		    LL(b)(row).init_inc_lvl();
 		  }
 		LL(b)(row).fill();
+		//printf("pend init: %d %d \n", b,row);
 		LL(b)(row).init_pend();
 		
 
@@ -1493,7 +1656,10 @@ namespace BaskerNS
 	  }//end over each matrix row
       }//end over all nblks
 
+    #ifdef BASKER_DEBUG_UTIL
     printf("nnz in ND: %d \n", total_nnz);
+    #endif
+
     //Get nnz for BTF L
     if(Options.btf == BASKER_TRUE)
       {
@@ -1505,7 +1671,9 @@ namespace BaskerNS
 	  }//over all blks
       }//end option btf
 
+    #ifdef BASKER_DEBUG_UTIL
     printf("Total L nnz: %d \n", total_nnz);
+    #endif
     //printf("-----Done Print L2d ---------\n");
 
     return total_nnz;
@@ -1527,7 +1695,9 @@ namespace BaskerNS
 	  }//end over each matrix row
       }//end over all nblks
 
+    #ifdef BASKER_DEBUG_UTIL
     printf("nnz in ND: %d \n", total_nnz);
+    #endif
     //Get nnz for BTF L
     if(Options.btf == BASKER_TRUE)
       {
@@ -1539,8 +1709,10 @@ namespace BaskerNS
 	  }//over all blks
       }//end option btf
 
+    #ifdef BASKER_DEBUG_UTIL
     printf("Total U nnz: %d \n", total_nnz);
     //printf("-----Done Print L2d ---------\n");
+    #endif
 
     return total_nnz;
   }//end get_Unnz()
@@ -1557,9 +1729,9 @@ namespace BaskerNS
    Entry**  val
    )
   {
+
     //Add Check
- 
-    
+    //Kokkos::Impl::Timer timer;
     n   = gn;
     nnz = get_Lnnz();
     (*col_ptr) = new Int[gn+1]();
@@ -1621,8 +1793,34 @@ namespace BaskerNS
       }//end option btf
 
    
+    #ifdef BASKER_DEBUG_UTIL
     printf("Total L nnz: %d ptr: %d  \n", total_Lnnz, ptr);
     printf("-----Done Print GetL ---------\n");
+    #endif
+
+    //Test Printf
+    /*
+    FILE *fp;
+    fp = fopen("L_col_ptr.csc", "w");
+    for(Int i = 0; i < n+1; i++)
+      {
+	fprintf(fp, "%d \n", (*col_ptr)[i]);
+      }
+    fclose(fp);
+    fp = fopen("L_row_idx.csc", "w");
+    for(Int i = 0; i < nnz; i++)
+      {
+	fprintf(fp, "%d \n", (*row_idx)[i]);
+      }
+    fclose(fp);
+    fp = fopen("L_val.csc", "w");
+    for(Int i = 0; i < nnz; i++)
+      {
+	fprintf(fp, "%f \n", (*val)[i]);
+      }
+    fclose(fp);
+    */
+
     return 0;
 
   }//end get_L();
@@ -1711,7 +1909,9 @@ namespace BaskerNS
 	  }//over all blks
       }//end option btf
 
+    #ifdef BASKER_DEBUG_UTIL
     printf("---------Done Get U : %d ------\n",  total_Unnz);
+    #endif
     return 0;
   }//end get_U()
 
@@ -2118,7 +2318,7 @@ namespace BaskerNS
     printf("---VECTOR: %d ----\n", n);
     for(Int i = 0; i< n; i++)
       {
-	printf("%d %f, \n", i, x[i]);
+	printf("%d %g, \n", i, x[i]);
       }
     printf("---END VECTOR: %d ---\n", n);
 
@@ -2216,8 +2416,11 @@ namespace BaskerNS
 
 
     //Debug
-    //printVec("left_perm.csc", outp_l, gn);
-    //printVec("right_perm.csc", outp_r, gn);
+    if(Options.verbose_matrix_out == BASKER_TRUE)
+      {
+	printVec("left_perm.csc", outp_l, gn);
+	printVec("right_perm.csc", outp_r, gn);
+      }
 
     FREE_INT_1DARRAY(temp);
 
@@ -2255,6 +2458,10 @@ namespace BaskerNS
 
   }//end find_leader()
 
+  //Added print function
+  //I like printf because it is not a thread race dependend like 
+  //c++ streams, however be may get compiler warnings
+  //Come back and add own printf style calls
 
  
 }//end namespace basker

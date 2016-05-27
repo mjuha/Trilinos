@@ -461,7 +461,7 @@ namespace {
 
 // ========================================================================
 template <typename INT>
-void process_surface_entity(const Ioss::SideSet* sset, stk::mesh::BulkData & bulk, INT /*dummy*/, stk::io::StkMeshIoBroker::SideSetFaceCreationBehavior behavior)
+void process_surface_entity(const Ioss::SideSet* sset, stk::mesh::BulkData & bulk, stk::io::StkMeshIoBroker::SideSetFaceCreationBehavior behavior)
 {
     assert(sset->type() == Ioss::SIDESET);
 
@@ -514,7 +514,7 @@ void process_surface_entity(const Ioss::SideSet* sset, stk::mesh::BulkData & bul
                     if (par_dimen == 1) {
                         if(bulk.mesh_meta_data().spatial_dimension()==2 && behavior == stk::io::StkMeshIoBroker::STK_IO_SIDE_CREATION_USING_GRAPH_TEST)
                         {
-                            stk::mesh::declare_element_side_using_graph(bulk, side_id, elem, side_ordinal, add_parts);
+                            stk::mesh::declare_element_side(bulk, elem, side_ordinal, add_parts);
                         }
                         else
                         {
@@ -532,7 +532,7 @@ void process_surface_entity(const Ioss::SideSet* sset, stk::mesh::BulkData & bul
                             stk::mesh::impl::connect_face_to_other_elements(bulk,new_face,elem,side_ordinal);
                         }
                         else if (behavior == stk::io::StkMeshIoBroker::STK_IO_SIDE_CREATION_USING_GRAPH_TEST) {
-                            stk::mesh::declare_element_side_using_graph(bulk, side_id, elem, side_ordinal, add_parts);
+                            stk::mesh::declare_element_side(bulk, elem, side_ordinal, add_parts);
                         }
                     }
                 }
@@ -543,7 +543,7 @@ void process_surface_entity(const Ioss::SideSet* sset, stk::mesh::BulkData & bul
 
 // ========================================================================
 template <typename INT>
-void process_surface_entity_df(const Ioss::SideSet* sset, stk::mesh::BulkData & bulk, INT /*dummy*/)
+void process_surface_entity_df(const Ioss::SideSet* sset, stk::mesh::BulkData & bulk)
 {
   assert(sset->type() == Ioss::SIDESET);
 
@@ -624,24 +624,20 @@ void process_surface_entity_df(const Ioss::SideSet* sset, stk::mesh::BulkData & 
 void process_surface_entity(const Ioss::SideSet* sset, stk::mesh::BulkData & bulk, stk::io::StkMeshIoBroker::SideSetFaceCreationBehavior behavior)
 {
   if (stk::io::db_api_int_size(sset) == 4) {
-    int dummy = 0;
-    process_surface_entity(sset, bulk, dummy, behavior);
+    process_surface_entity<int>(sset, bulk, behavior);
   }
   else {
-    int64_t dummy = 0;
-    process_surface_entity(sset, bulk, dummy, behavior);
+    process_surface_entity<int64_t>(sset, bulk, behavior);
   }
 }
 
 void process_surface_entity_df(const Ioss::SideSet* sset, stk::mesh::BulkData & bulk)
 {
   if (stk::io::db_api_int_size(sset) == 4) {
-    int dummy = 0;
-    process_surface_entity_df(sset, bulk, dummy);
+    process_surface_entity_df<int>(sset, bulk);
   }
   else {
-    int64_t dummy = 0;
-    process_surface_entity_df(sset, bulk, dummy);
+    process_surface_entity_df<int64_t>(sset, bulk);
   }
 }
 
@@ -664,9 +660,9 @@ void process_nodeblocks(Ioss::Region &region, stk::mesh::MetaData &meta)
 
 template <typename INT>
 #ifdef STK_BUILT_IN_SIERRA
-void process_nodeblocks(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dummy*/)
+void process_nodeblocks(Ioss::Region &region, stk::mesh::BulkData &bulk)
 #else
-void process_nodeblocks(Ioss::Region &region, stk::mesh::BulkData &bulk, stk::ParallelMachine comm, INT /*dummy*/)
+void process_nodeblocks(Ioss::Region &region, stk::mesh::BulkData &bulk, stk::ParallelMachine comm)
 #endif
 {
   // This must be called after the "process_element_blocks" call
@@ -736,7 +732,7 @@ void process_nodeblocks(Ioss::Region &region, stk::mesh::BulkData &bulk, stk::Pa
 }
 
 template <typename INT>
-void process_node_coords_and_attributes(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dummy*/)
+void process_node_coords_and_attributes(Ioss::Region &region, stk::mesh::BulkData &bulk)
 {
   // This must be called after the "process_element_blocks" call
   // since there may be nodes that exist in the database that are
@@ -804,7 +800,7 @@ void process_elementblocks(Ioss::Region &region, stk::mesh::MetaData &meta)
 }
 
 template <typename INT>
-void process_elementblocks(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dummy*/)
+void process_elementblocks(Ioss::Region &region, stk::mesh::BulkData &bulk)
 {
   const stk::mesh::MetaData& meta = stk::mesh::MetaData::get(bulk);
 
@@ -849,7 +845,7 @@ void process_elementblocks(Ioss::Region &region, stk::mesh::BulkData &bulk, INT 
 }
 
 template <typename INT>
-void process_elem_attributes_and_implicit_ids(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dummy*/)
+void process_elem_attributes_and_implicit_ids(Ioss::Region &region, stk::mesh::BulkData &bulk)
 {
   const stk::mesh::MetaData& meta = stk::mesh::MetaData::get(bulk);
 
@@ -1000,7 +996,7 @@ void process_sidesets(Ioss::Region &region, stk::mesh::MetaData &meta)
 
 // ========================================================================
 template <typename INT>
-void process_nodesets(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dummy*/)
+void process_nodesets(Ioss::Region &region, stk::mesh::BulkData &bulk)
 {
   // Should only process nodes that have already been defined via the element
   // blocks connectivity lists.
@@ -1036,7 +1032,7 @@ void process_nodesets(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dum
 
 // ========================================================================
 template <typename INT>
-void process_nodesets_df(Ioss::Region &region, stk::mesh::BulkData &bulk, INT /*dummy*/)
+void process_nodesets_df(Ioss::Region &region, stk::mesh::BulkData &bulk)
 {
   // Should only process nodes that have already been defined via the element
   // blocks connectivity lists.
@@ -1189,13 +1185,13 @@ namespace stk {
   namespace io {
 
     StkMeshIoBroker::StkMeshIoBroker()
-      : m_communicator(MPI_COMM_NULL), m_connectivity_map(NULL), m_active_mesh_index(0), m_sideset_face_creation_behavior(STK_IO_SIDESET_FACE_CREATION_CURRENT)
+      : m_communicator(MPI_COMM_NULL), m_connectivity_map(NULL), m_active_mesh_index(0), m_sideset_face_creation_behavior(STK_IO_SIDE_CREATION_USING_GRAPH_TEST)
     {
       Ioss::Init::Initializer::initialize_ioss();
     }
 
     StkMeshIoBroker::StkMeshIoBroker(stk::ParallelMachine comm, const stk::mesh::ConnectivityMap * connectivity_map)
-      : m_communicator(comm), m_connectivity_map(connectivity_map), m_active_mesh_index(0), m_sideset_face_creation_behavior(STK_IO_SIDESET_FACE_CREATION_CURRENT)
+      : m_communicator(comm), m_connectivity_map(connectivity_map), m_active_mesh_index(0), m_sideset_face_creation_behavior(STK_IO_SIDE_CREATION_USING_GRAPH_TEST)
     {
       Ioss::Init::Initializer::initialize_ioss();
     }
@@ -1387,14 +1383,16 @@ namespace stk {
       }
 
 
-      size_t StkMeshIoBroker::create_output_mesh(const std::string &filename, DatabasePurpose db_type)
+      size_t StkMeshIoBroker::create_output_mesh(const std::string &filename, DatabasePurpose db_type, 
+                                                 char const* type)
       {
-        return create_output_mesh(filename, db_type, m_property_manager);
+        return create_output_mesh(filename, db_type, m_property_manager, type);
       }
 
 
       size_t StkMeshIoBroker::create_output_mesh(const std::string &filename, DatabasePurpose db_type,
-                                                 Ioss::PropertyManager &properties)
+                                                 Ioss::PropertyManager &properties,
+                                                 char const* type)
       {
         std::string out_filename = filename;
         stk::util::filename_substitution(out_filename);
@@ -1411,7 +1409,7 @@ namespace stk {
 	}
 
         Teuchos::RCP<impl::OutputFile> output_file = Teuchos::rcp(new impl::OutputFile(out_filename, m_communicator, db_type,
-                                                                           properties, input_region));
+                                                                           properties, input_region, type));
         m_output_files.push_back(output_file);
 
         size_t index_of_output_file = m_output_files.size()-1;
@@ -1466,23 +1464,21 @@ namespace stk {
         Ioss::Region *region = m_input_files[m_active_mesh_index]->get_input_io_region().get();
         bool ints64bit = db_api_int_size(region) == 8;
         if (ints64bit) {
-          int64_t zero = 0;
 #ifdef STK_BUILT_IN_SIERRA
-          process_nodeblocks(*region,    bulk_data(), zero);
+          process_nodeblocks<int64_t>(*region,    bulk_data());
 #else
-          process_nodeblocks(*region,    bulk_data(), m_communicator, zero);
+          process_nodeblocks<int64_t>(*region,    bulk_data(), m_communicator);
 #endif
-          process_elementblocks(*region, bulk_data(), zero);
-          process_nodesets(*region,      bulk_data(), zero);
+          process_elementblocks<int64_t>(*region, bulk_data());
+          process_nodesets<int64_t>(*region,      bulk_data());
         } else {
-          int zero = 0;
 #ifdef STK_BUILT_IN_SIERRA
-          process_nodeblocks(*region,    bulk_data(), zero);
+          process_nodeblocks<int>(*region,    bulk_data());
 #else
-          process_nodeblocks(*region,    bulk_data(), m_communicator, zero);
+          process_nodeblocks<int>(*region,    bulk_data(), m_communicator);
 #endif
-          process_elementblocks(*region, bulk_data(), zero);
-          process_nodesets(*region,      bulk_data(), zero);
+          process_elementblocks<int>(*region, bulk_data());
+          process_nodesets<int>(*region,      bulk_data());
         }
 
         bulk_data().resolve_node_sharing();
@@ -1497,9 +1493,11 @@ namespace stk {
         }
         else
         {
-            bulk_data().initialize_graph();
+            bulk_data().initialize_face_adjacent_element_graph();
             process_sidesets(*region,      bulk_data(), m_sideset_face_creation_behavior);
             bulk_data().modification_end_after_node_sharing_resolution();
+
+            bulk_data().delete_face_adjacent_element_graph();
         }
 
         // Not sure if this is needed anymore. Don't think it'll be called with a nested modification cycle
@@ -1521,17 +1519,15 @@ namespace stk {
 
         bool ints64bit = db_api_int_size(region) == 8;
         if (ints64bit) {
-          int64_t zero = 0;
-          process_node_coords_and_attributes(*region, bulk_data(), zero);
-          process_elem_attributes_and_implicit_ids(*region, bulk_data(), zero);
-          process_nodesets_df(*region,      bulk_data(), zero);
+          process_node_coords_and_attributes<int64_t>(*region, bulk_data());
+          process_elem_attributes_and_implicit_ids<int64_t>(*region, bulk_data());
+          process_nodesets_df<int64_t>(*region,      bulk_data());
           process_sidesets_df(*region,      bulk_data());
         }
         else {
-          int zero = 0;
-          process_node_coords_and_attributes(*region, bulk_data(), zero);
-          process_elem_attributes_and_implicit_ids(*region, bulk_data(), zero);
-          process_nodesets_df(*region,      bulk_data(), zero);
+          process_node_coords_and_attributes<int>(*region, bulk_data());
+          process_elem_attributes_and_implicit_ids<int>(*region, bulk_data());
+          process_nodesets_df<int>(*region,      bulk_data());
           process_sidesets_df(*region,      bulk_data());
         }
 
@@ -2094,11 +2090,11 @@ namespace stk {
         }
 
         void impl::OutputFile::setup_output_file(const std::string &filename, stk::ParallelMachine communicator,
-                                           Ioss::PropertyManager &property_manager)
+                                           Ioss::PropertyManager &property_manager, char const* type)
         {
           ThrowErrorMsgIf (filename.empty(),
                            "No filename was specified for the output file creation.");
-          Ioss::DatabaseIO *dbo = Ioss::IOFactory::create("exodusII", filename,
+          Ioss::DatabaseIO *dbo = Ioss::IOFactory::create(type, filename,
                                                           Ioss::WRITE_RESULTS,
                                                           communicator,
                                                           property_manager);

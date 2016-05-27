@@ -82,7 +82,7 @@ using Teuchos::rcp;
 
 namespace panzer {
 
-typedef Intrepid2::FieldContainer<double> FieldArray;
+typedef Kokkos::DynRankView<double,PHX::Device> FieldArray;
 
 //**********************************************************************
 PHX_EVALUATOR_CLASS(DummyFieldEvaluator)
@@ -152,7 +152,6 @@ TEUCHOS_UNIT_TEST_TEMPLATE_1_DECL(dof_pointfield,value,EvalType)
 {
   typedef Sacado::ScalarValue<typename EvalType::ScalarT> SV;
 
-  PHX::KokkosDeviceSession session;
 
   // build global (or serial communicator)
   #ifdef HAVE_MPI
@@ -207,8 +206,7 @@ TEUCHOS_UNIT_TEST_TEMPLATE_1_DECL(dof_pointfield,value,EvalType)
   basisValues->evaluateValues(quadValues->cub_points,quadValues->jac,quadValues->jac_det,quadValues->jac_inv,quadValues->weighted_measure,coords);
 
   {
-    Intrepid2::FieldContainer<double> coords;
-    coords.resize(numCells,numVerts,dim);
+    Kokkos::DynRankView<double,PHX::Device> coords("coords",numCells,numVerts,dim);
 
     coords(0,0,0) = 1.0; coords(0,0,1) = 0.0;
     coords(0,1,0) = 1.0; coords(0,1,1) = 1.0;
@@ -316,6 +314,9 @@ TEUCHOS_UNIT_TEST_TEMPLATE_1_DECL(dof_pointfield,value,EvalType)
   std::vector<PHX::index_size_type> derivative_dimensions;
   derivative_dimensions.push_back(8);
   fm->setKokkosExtendedDataTypeDimensions<panzer::Traits::Jacobian>(derivative_dimensions);
+#ifdef Panzer_BUILD_HESSIAN_SUPPORT
+  fm->setKokkosExtendedDataTypeDimensions<panzer::Traits::Hessian>(derivative_dimensions);
+#endif
   fm->postRegistrationSetup(setupData);
   fm->writeGraphvizFile();
 
@@ -358,5 +359,10 @@ typedef Traits::Jacobian JacobianType;
 
 UNIT_TEST_GROUP(ResidualType)
 UNIT_TEST_GROUP(JacobianType)
+
+#ifdef Panzer_BUILD_HESSIAN_SUPPORT
+typedef Traits::Hessian HessianType;
+UNIT_TEST_GROUP(HessianType)
+#endif
 
 }

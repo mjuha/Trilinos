@@ -253,7 +253,7 @@ namespace panzer {
       // evaluate
       rLibrary->evaluate<Traits::Residual>(ae_inargs);
 
-      TEST_ASSERT(testEqualityOfVectorValues(*response_residual->getResidual(),*f_me,1e-16,true));
+      TEST_ASSERT(testEqualityOfVectorValues(*response_residual->getResidual(),*f_me,1e-15,true));
     }
 
     // evaluate jacobian responses
@@ -839,7 +839,7 @@ namespace panzer {
           = Teuchos::rcp(new panzer::DOFManager<int,int>(conn_manager,MPI_COMM_WORLD));
 
       Teuchos::RCP<Intrepid2FieldPattern> fp 
-          = Teuchos::rcp(new Intrepid2FieldPattern(panzer::createIntrepid2Basis<double,Intrepid2::FieldContainer<double> >("HGrad",1,mesh->getCellTopology("eblock-0_0"))));
+          = Teuchos::rcp(new Intrepid2FieldPattern(panzer::createIntrepid2Basis<double,Kokkos::DynRankView<double,PHX::Device> >("HGrad",1,mesh->getCellTopology("eblock-0_0"))));
       dofManager->addField("eblock-0_0","DENSITY",fp);
       dofManager->addField("eblock-1_0","DENSITY",fp);
 

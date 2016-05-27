@@ -62,16 +62,15 @@ namespace { // anonymous
     typedef typename MultiVectorType::impl_scalar_type impl_scalar_type;
 
     static impl_scalar_type* getRawPtr (MultiVectorType& X) {
-      typedef typename MultiVectorType::dual_view_type dual_view_type;
-      typedef typename dual_view_type::t_host::memory_space host_memory_space;
-
+      // We need a host pointer, so we need to sync to host.
+      X.template sync<Kokkos::HostSpace> ();
       // We're getting a nonconst View, so mark the MultiVector as
       // modified on the host.  This will throw an exception if the
       // MultiVector is already modified on the host.
-      X.template modify<host_memory_space> ();
+      X.template modify<Kokkos::HostSpace> ();
 
-      dual_view_type X_view = X.getDualView ();
-      impl_scalar_type* X_raw = X_view.h_view.ptr_on_device ();
+      auto X_view_host = X.template getLocalView<Kokkos::HostSpace> ();
+      impl_scalar_type* X_raw = X_view_host.ptr_on_device ();
       return X_raw;
     }
   };
@@ -315,10 +314,9 @@ replaceLocalValuesImpl (const LO localRowIndex,
                         const Scalar vals[]) const
 {
   little_vec_type X_dst = getLocalBlock (localRowIndex, colIndex);
-  const LO strideX = 1;
   const_little_vec_type X_src (reinterpret_cast<const impl_scalar_type*> (vals),
-                               getBlockSize (), strideX);
-  deep_copy (X_dst, X_src);
+                               getBlockSize ());
+  Kokkos::deep_copy (X_dst, X_src);
 }
 
 
@@ -361,9 +359,8 @@ sumIntoLocalValuesImpl (const LO localRowIndex,
                         const Scalar vals[]) const
 {
   little_vec_type X_dst = getLocalBlock (localRowIndex, colIndex);
-  const LO strideX = 1;
   const_little_vec_type X_src (reinterpret_cast<const impl_scalar_type*> (vals),
-                               getBlockSize (), strideX);
+                               getBlockSize ());
   AXPY (STS::one (), X_src, X_dst);
 }
 
@@ -434,14 +431,13 @@ getLocalBlock (const LO localRowIndex,
                const LO colIndex) const
 {
   if (! isValidLocalMeshIndex (localRowIndex)) {
-    return little_vec_type (NULL, 0, 0);
+    return little_vec_type ();
   } else {
-    const LO strideX = this->getStrideX ();
     const size_t blockSize = getBlockSize ();
     const size_t offset = colIndex * this->getStrideY () +
-      localRowIndex * blockSize * strideX;
+      localRowIndex * blockSize;
     impl_scalar_type* blockRaw = this->getRawPtr () + offset;
-    return little_vec_type (blockRaw, blockSize, strideX);
+    return little_vec_type (blockRaw, blockSize);
   }
 }
 
@@ -565,10 +561,10 @@ packAndPrepare (const Tpetra::SrcDistObject& src,
       for (LO j = 0; j < numVecs; ++j, curExportPos += blockSize) {
         const LO meshLid = exportLIDs[meshLidIndex];
         impl_scalar_type* const curExportPtr = &exports[curExportPos];
-        little_vec_type X_dst (curExportPtr, blockSize, 1);
+        little_vec_type X_dst (curExportPtr, blockSize);
         little_vec_type X_src = srcAsBmv.getLocalBlock (meshLid, j);
 
-        deep_copy (X_dst, X_src);
+        Kokkos::deep_copy (X_dst, X_src);
       }
     }
   } catch (std::exception& e) {
@@ -619,7 +615,7 @@ unpackAndCombine (const Teuchos::ArrayView<const LO>& importLIDs,
       const LO meshLid = importLIDs[meshLidIndex];
       const impl_scalar_type* const curImportPtr = &imports[curImportPos];
 
-      const_little_vec_type X_src (curImportPtr, blockSize, 1);
+      const_little_vec_type X_src (curImportPtr, blockSize);
       little_vec_type X_dst = getLocalBlock (meshLid, j);
 
       if (CM == INSERT || CM == REPLACE) {
@@ -656,6 +652,61 @@ update (const Scalar& alpha,
   mv_.update (alpha, X.mv_, beta);
 }
 
+namespace Impl {
+// Y := alpha * D * X
+template <typename Scalar, typename ViewY, typename ViewD, typename ViewX>
+struct BlockWiseMultiply {
+  typedef typename ViewD::size_type Size;
+
+private:
+  typedef typename ViewD::device_type Device;
+  typedef typename ViewD::non_const_value_type ImplScalar;
+  typedef Kokkos::MemoryTraits<Kokkos::Unmanaged> Unmanaged;
+
+  template <typename View>
+  using UnmanagedView = Kokkos::View<typename View::data_type, typename View::array_layout,
+                                     typename View::device_type, Unmanaged>;
+  typedef UnmanagedView<ViewY> UnMViewY;
+  typedef UnmanagedView<ViewD> UnMViewD;
+  typedef UnmanagedView<ViewX> UnMViewX;
+
+  const Size block_size_;
+  Scalar alpha_;
+  UnMViewY Y_;
+  UnMViewD D_;
+  UnMViewX X_;
+
+public:
+  BlockWiseMultiply (const Size block_size, const Scalar& alpha,
+                     const ViewY& Y, const ViewD& D, const ViewX& X)
+    : block_size_(block_size), alpha_(alpha), Y_(Y), D_(D), X_(X)
+  {}
+
+  KOKKOS_INLINE_FUNCTION
+  void operator() (const Size k) const {
+    const auto zero = Kokkos::Details::ArithTraits<Scalar>::zero();
+    auto D_curBlk = Kokkos::subview(D_, k, Kokkos::ALL (), Kokkos::ALL ());
+    const auto num_vecs = X_.dimension_1();
+    for (Size i = 0; i < num_vecs; ++i) {
+      Kokkos::pair<Size, Size> kslice(k*block_size_, (k+1)*block_size_);
+      auto X_curBlk = Kokkos::subview(X_, kslice, i);
+      auto Y_curBlk = Kokkos::subview(Y_, kslice, i);
+      // Y_curBlk := alpha * D_curBlk * X_curBlk.
+      // Recall that GEMV does an update (+=) of the last argument.
+      Tpetra::Experimental::FILL(Y_curBlk, zero);
+      Tpetra::Experimental::GEMV(alpha_, D_curBlk, X_curBlk, Y_curBlk);
+    }
+  }
+};
+
+template <typename Scalar, typename ViewY, typename ViewD, typename ViewX>
+inline BlockWiseMultiply<Scalar, ViewY, ViewD, ViewX>
+createBlockWiseMultiply (const int block_size, const Scalar& alpha,
+                         const ViewY& Y, const ViewD& D, const ViewX& X) {
+  return BlockWiseMultiply<Scalar, ViewY, ViewD, ViewX>(block_size, alpha, Y, D, X);
+}
+}
+
 template<class Scalar, class LO, class GO, class Node>
 void BlockMultiVector<Scalar, LO, GO, Node>::
 blockWiseMultiply (const Scalar& alpha,
@@ -666,26 +717,19 @@ blockWiseMultiply (const Scalar& alpha,
   using Kokkos::ALL;
   const impl_scalar_type zero = static_cast<impl_scalar_type> (STS::zero ());
   const LO lclNumMeshRows = meshMap_.getNodeNumElements ();
-  const LO numVecs = mv_.getNumVectors ();
 
   if (alpha == STS::zero ()) {
     this->putScalar (STS::zero ());
   }
   else { // alpha != 0
-    for (LO i = 0; i < numVecs; ++i) {
-      for (LO k = 0; k < lclNumMeshRows; ++k) {
-        auto D_curBlk = Kokkos::subview (D, k, ALL (), ALL ());
-        auto X_curBlk = X.getLocalBlock (k, i);
-        auto Y_curBlk = this->getLocalBlock (k, i);
-        // Y_curBlk := alpha * D_curBlk * X_curBlk.
-        // Recall that GEMV does an update (+=) of the last argument.
-        Tpetra::Experimental::FILL (Y_curBlk, zero);
-        Tpetra::Experimental::GEMV (alpha, D_curBlk, X_curBlk, Y_curBlk);
-      }
-    }
+    auto bwm = Impl::createBlockWiseMultiply (
+      getBlockSize(), alpha,
+      this->getMultiVectorView().template getLocalView<device_type>(),
+      D,
+      const_cast<BlockMultiVector<Scalar, LO, GO, Node>&>(X).getMultiVectorView().template getLocalView<device_type>());
+    Kokkos::parallel_for (lclNumMeshRows, bwm);
   }
 }
-
 
 template<class Scalar, class LO, class GO, class Node>
 void BlockMultiVector<Scalar, LO, GO, Node>::

@@ -183,12 +183,24 @@ PHX::EvaluatorWithBaseImpl<Traits>::dependentFields() const
 template<typename Traits>
 Kokkos::Experimental::Future<void,PHX::Device::execution_space>
 PHX::EvaluatorWithBaseImpl<Traits>::
-createTask(const Kokkos::Experimental::TaskPolicy<PHX::Device::execution_space>& ,
+createTask(Kokkos::Experimental::TaskPolicy<PHX::Device::execution_space>& ,
 	   const std::size_t& ,
+	   const int& ,
 	   typename Traits::EvalData )
 {
   TEUCHOS_TEST_FOR_EXCEPTION(true,std::runtime_error,
 			     "Error - The evalautor \""<< this->getName() <<"\" does not have a derived method for createTask() that is required when calling FieldManager::evaluateFieldsTaskParallel().  Please implement the createTask() method in this Evalautor.");
+}
+#endif
+//**********************************************************************
+#ifdef PHX_ENABLE_KOKKOS_AMT
+template<typename Traits>
+unsigned 
+PHX::EvaluatorWithBaseImpl<Traits>::
+taskSize() const
+{
+  TEUCHOS_TEST_FOR_EXCEPTION(true,std::runtime_error,
+			     "Error - The evalautor \""<< this->getName() <<"\" does not have a derived method for taskSize() that is required when calling FieldManager::evaluateFieldsTaskParallel().  Please implement the taskSize() method in this Evalautor.");
 }
 #endif
 

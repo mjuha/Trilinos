@@ -61,6 +61,7 @@
 #include <iomanip>
 #include <iostream>
 #include <vector>
+#include <set>
 
 namespace Zoltan2{
 
@@ -83,6 +84,7 @@ private:
   ArrayRCP<scalar_t> values_;
   std::string metricName_;
   multiCriteriaNorm mcnorm_;   // store "actualNorm + 1"
+  static std::set<std::string> metrics_;
 
 public:
 
@@ -192,7 +194,51 @@ scalar_t getMaxImbalance() const { return values_[evalMaxImbalance];}
 /*! \brief Get the average of the part imbalances. */
 scalar_t getAvgImbalance() const { return values_[evalAvgImbalance];}
 
+/// \brief Return a metric value specified by name
+///
+/// @param metric_name Name of metric to return
+/// @param[out] value metric value returned by reference
+///
+/// @return Returns a boolean indicated whether or not the metric was returned 
+scalar_t getMetricValue(const std::string & metric_name) const {
+  if (metric_name == "local sum") {
+    return this->getLocalSum();
+  } else if (metric_name == "global sum") {
+    return this->getGlobalSum();
+  } else if (metric_name == "global maximum") {
+    return this->getGlobalMax();
+  } else if (metric_name == "global minimum") {
+    return this->getGlobalMin();
+  } else if (metric_name == "global average") {
+    return this->getGlobalAvg();
+  } else if (metric_name == "minimum imbalance") {
+    return this->getMinImbalance();
+  } else if (metric_name == "maximum imbalance") {
+    return this->getMaxImbalance();
+  } else if (metric_name == "average imbalance") {
+    return this->getAvgImbalance();
+  } else {
+    return 0.0; // throw error
+  }
+}
+
+bool hasMetricValue(const std::string & metric_name) const {
+  return MetricValues<scalar_t>::metrics_.find(metric_name) !=
+         MetricValues<scalar_t>::metrics_.end();
+}
 };  // end class
+
+template <typename scalar_t>
+std::set<std::string> MetricValues<scalar_t>::metrics_ = {
+  "local sum",
+  "global sum",
+  "global maximum",
+  "global minimum",
+  "global average",
+  "minimum imbalance",
+  "maximum imbalance",
+  "average imbalance",
+};
 
 /*! \brief A class containing the metrics for one measurable item.
  */
@@ -208,6 +254,7 @@ private:
   }
   ArrayRCP<scalar_t> values_;
   std::string metricName_;
+  static std::set<std::string> metrics_;
 
 public:
 
@@ -254,7 +301,33 @@ scalar_t getGlobalSum() const { return values_[evalGlobalSum];}
 /*! \brief Get the global maximum of edge cuts per part across all parts. */
 scalar_t getGlobalMax() const { return values_[evalGlobalMax];}
 
+/// \brief Return a metric value specified by name
+///
+/// @param metric_name Name of metric to return
+/// @param[out] value metric value returned by reference
+///
+/// @return Returns a boolean indicated whether or not the metric was returned 
+scalar_t getMetricValue(const std::string & metric_name) const {
+  if (metric_name == "global maximum") {
+    return this->getGlobalMax();
+  } else if (metric_name == "global sum") {
+    return this->getGlobalSum();
+  } else {
+    return 0.0; // throw error
+  }
+}
+
+bool hasMetricValue(const std::string & metric_name) const {
+  return GraphMetricValues<scalar_t>::metrics_.find(metric_name) !=
+         GraphMetricValues<scalar_t>::metrics_.end();
+}
 };  // end class
+
+template <typename scalar_t>
+std::set<std::string> GraphMetricValues<scalar_t>::metrics_ = {
+  "global sum",
+  "global maximum",
+};
 
 template <typename scalar_t>
   void MetricValues<scalar_t>::printLine(std::ostream &os) const
@@ -763,8 +836,8 @@ template <typename Adapter>
 
   int ewgtDim = graph->getNumWeightsPerEdge();
 
-  int numMetrics = 1;                       // "cut count" or "weight 0"
-  if (ewgtDim > 1) numMetrics = ewgtDim;   // "weight n"
+  int numMetrics = 1;                   // "cut count"
+  if (ewgtDim) numMetrics += ewgtDim;   // "weight n"
 
   typedef typename Adapter::scalar_t scalar_t;
   typedef typename Adapter::gno_t gno_t;
@@ -890,23 +963,24 @@ template <typename Adapter>
   Array<gno_t> Indices;
   Array<part_t> Values;
 
-  if (!ewgtDim) {
-    for (lno_t i=0; i < localNumObj; i++) {
-      const gno_t globalRow = Ids[i];
-      size_t NumEntries = adjsMatrix->getNumEntriesInGlobalRow (globalRow);
-      Indices.resize (NumEntries);
-      Values.resize (NumEntries);
-      adjsMatrix->getGlobalRowCopy (globalRow,Indices(),Values(),NumEntries);
+  for (lno_t i=0; i < localNumObj; i++) {
+    const gno_t globalRow = Ids[i];
+    size_t NumEntries = adjsMatrix->getNumEntriesInGlobalRow (globalRow);
+    Indices.resize (NumEntries);
+    Values.resize (NumEntries);
+    adjsMatrix->getGlobalRowCopy (globalRow,Indices(),Values(),NumEntries);
 
-      for (size_t j=0; j < NumEntries; j++)
-	if (part[i] != Values[j])
-	  cut[part[i]]++;
-    }
+    for (size_t j=0; j < NumEntries; j++)
+      if (part[i] != Values[j])
+	cut[part[i]]++;
+  }
 
-  // This code assumes the solution has the part ordered the
-  // same way as the user input.  (Bug 5891 is resolved.)
-  } else {
-    scalar_t *wgt = localBuf; // weight 0
+  if (numMetrics > 1) {
+
+    scalar_t *wgt = localBuf + nparts; // weight 0
+
+    // This code assumes the solution has the part ordered the
+    // same way as the user input.  (Bug 5891 is resolved.)
     for (int edim = 0; edim < ewgtDim; edim++){
       for (lno_t i=0; i < localNumObj; i++) {
 	const gno_t globalRow = Ids[i];
@@ -947,9 +1021,10 @@ template <typename Adapter>
   metrics[next].setName("cut count");
   metrics[next].setGlobalMax(max);
   metrics[next].setGlobalSum(sum);
+  next++;
 
-  if (ewgtDim){
-    scalar_t *wgt = sumBuf;        // weight 0
+  if (numMetrics > 1){
+    scalar_t *wgt = sumBuf + nparts;        // weight 0
   
     for (int edim=0; edim < ewgtDim; edim++){
       ArrayView<scalar_t> fromVec(wgt, nparts);

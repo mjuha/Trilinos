@@ -373,14 +373,13 @@ TEST_F( threads , atomics )
   ASSERT_TRUE( ( TestAtomic::Loop<float,Kokkos::Threads>(100,2) ) );
   ASSERT_TRUE( ( TestAtomic::Loop<float,Kokkos::Threads>(100,3) ) );
 
-#if defined( KOKKOS_ENABLE_ASM )
   ASSERT_TRUE( ( TestAtomic::Loop<Kokkos::complex<double> ,Kokkos::Threads>(100,1) ) );
   ASSERT_TRUE( ( TestAtomic::Loop<Kokkos::complex<double> ,Kokkos::Threads>(100,2) ) );
   ASSERT_TRUE( ( TestAtomic::Loop<Kokkos::complex<double> ,Kokkos::Threads>(100,3) ) );
-#endif
 
   ASSERT_TRUE( ( TestAtomic::Loop<TestAtomic::SuperScalar<3>, Kokkos::Threads>(loop_count,1) ) );
   ASSERT_TRUE( ( TestAtomic::Loop<TestAtomic::SuperScalar<3>, Kokkos::Threads>(loop_count,2) ) );
+  ASSERT_TRUE( ( TestAtomic::Loop<TestAtomic::SuperScalar<3>, Kokkos::Threads>(loop_count,3) ) );
 }
 
 //----------------------------------------------------------------------------
@@ -435,7 +434,7 @@ TEST_F( threads , memory_pool )
   bool val = TestMemoryPool::test_mempool< Kokkos::Threads >( 128, 128000000 );
   ASSERT_TRUE( val );
 
-  TestMemoryPool::test_mempool2< Kokkos::Threads >( 128, 128000000 );
+  TestMemoryPool::test_mempool2< Kokkos::Threads >( 64, 4, 1000000, 2000000 );
 }
 
 //----------------------------------------------------------------------------

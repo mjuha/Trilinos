@@ -61,11 +61,10 @@ Entity declare_element( BulkData & mesh ,
   return declare_element(mesh, vec, elem_id, node_ids);
 }
 
-Entity declare_element_side_using_graph(BulkData& mesh,
-                                        const stk::mesh::EntityId global_side_id,
-                                        Entity elem,
-                                        const unsigned side_ordinal,
-                                        const stk::mesh::PartVector& add_parts);
+Entity declare_element_side(BulkData& bulkData,
+                            Entity elem,
+                            const unsigned side_ordinal,
+                            const stk::mesh::PartVector& add_parts = stk::mesh::PartVector());
 
 /** \brief  Create (or find) an element side.
  *
@@ -141,14 +140,6 @@ OrdinalAndPermutation get_ordinal_and_positive_permutation(const stk::mesh::Bulk
                                                            stk::mesh::EntityRank to_rank,
                                                            const stk::mesh::EntityVector &nodes_of_sub_rank);
 
-
-/** \brief declares relation from an element to an entity of lower rank based on nodes that the entity contains
- *
- *
- *
- */
-stk::mesh::Entity declare_element_to_sub_topology_with_nodes(stk::mesh::BulkData &mesh, stk::mesh::Entity elem, const stk::mesh::EntityVector &sub_topology_nodes,
-		        stk::mesh::EntityId global_sub_topology_id, stk::mesh::EntityRank to_rank, stk::mesh::Part &part);
 
 /**
  * Given an entity, subcell_rank, and subcell_id, return the nodes

@@ -86,7 +86,6 @@ namespace panzer {
   {
     using Teuchos::RCP;
 
-    PHX::KokkosDeviceSession session;
 
     panzer_stk_classic::SquareQuadMeshFactory mesh_factory;
     Teuchos::RCP<user_app::MyFactory> eqset_factory = Teuchos::rcp(new user_app::MyFactory);
@@ -180,7 +179,10 @@ namespace panzer {
 
     // run tests
     /////////////////////////////////
-    fmb.writeVolumeGraphvizDependencyFiles("FMB_Test_", physics_blocks);
+    fmb.writeVolumeGraphvizDependencyFiles("FMB_Test", physics_blocks);
+    fmb.writeBCGraphvizDependencyFiles("FMB_Test");
+    fmb.writeVolumeTextDependencyFiles("FMB_Test", physics_blocks);
+    fmb.writeBCTextDependencyFiles("FMB_Test");
 
     const std::vector< Teuchos::RCP< PHX::FieldManager<panzer::Traits> > >& fmb_vol_fm = 
       fmb.getVolumeFieldManagers();

@@ -49,8 +49,117 @@
 #include "Tpetra_Details_PackTraits.hpp"
 #include "Teuchos_TimeMonitor.hpp"
 
+//
+// mfh 25 May 2016: Temporary fix for #393.
+//
+// Don't use lambdas in the BCRS mat-vec for GCC < 4.8, due to a GCC
+// 4.7.2 compiler bug ("internal compiler error") when compiling them.
+// Also, lambdas for Kokkos::parallel_* don't work with CUDA, so don't
+// use them in that case, either.
+//
+#if defined(__CUDACC__)
+   // Lambdas for Kokkos::parallel_* don't work with CUDA 7.5 either.
+#  if defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#    undef TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA
+#  endif // defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+
+#elif defined(__GNUC__)
+   // GCC 4.7.2 is broken (see #393), but GCC 4.8, 4.9, etc. are not
+   // (with regards to #393).  To be safe, we'll assume GCC 4.x.y is
+   // broken for all x <= 7, and for all y.
+#  if __GNUC__ == 4 && __GNUC_MINOR__ <= 7
+#    if defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#      undef TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA
+#    endif // defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#  else // GCC >= 4.8
+#    if ! defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#      define TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA 1
+#    endif // ! defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#  endif // __GNUC__ == 4 && __GNUC_MINOR__ <= 7
+
+#else // some other compiler
+
+   // Optimistically assume that other compilers aren't broken.
+#  if ! defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#    define TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA 1
+#  endif // ! defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#endif // defined(__CUDACC__), defined(__GNUC__)
+
+
 namespace Tpetra {
+
 namespace Experimental {
+
+namespace { // (anonymous)
+
+// Implementation of BlockCrsMatrix::getLocalDiagCopy (non-deprecated
+// version that takes two Kokkos::View arguments).
+template<class Scalar, class LO, class GO, class Node>
+class GetLocalDiagCopy {
+public:
+  typedef typename Node::device_type device_type;
+  typedef size_t diag_offset_type;
+  typedef Kokkos::View<const size_t*, device_type,
+                       Kokkos::MemoryUnmanaged> diag_offsets_type;
+  typedef typename ::Tpetra::CrsGraph<LO, GO, Node> global_graph_type;
+  typedef typename global_graph_type::local_graph_type local_graph_type;
+  typedef typename local_graph_type::row_map_type row_map_type;
+  typedef typename row_map_type::HostMirror abs_offset_type;
+  typedef typename ::Tpetra::Experimental::BlockMultiVector<Scalar,
+                                                            LO, GO, Node>::impl_scalar_type impl_scalar_type;
+  typedef Kokkos::View<impl_scalar_type***, device_type,
+                       Kokkos::MemoryUnmanaged> diag_type;
+  typedef Kokkos::View<const impl_scalar_type*, device_type,
+                       Kokkos::MemoryUnmanaged> values_type;
+
+  // Constructor
+  GetLocalDiagCopy (const diag_type& diag,
+                    const values_type& val,
+                    const diag_offsets_type& diagOffsets,
+                    const abs_offset_type& ptr,
+                    const LO blockSize) :
+    diag_ (diag),
+    diagOffsets_ (diagOffsets),
+    ptr_ (ptr),
+    blockSize_ (blockSize),
+    offsetPerBlock_ (blockSize_*blockSize_),
+    val_(val)
+  {}
+
+  KOKKOS_INLINE_FUNCTION void
+  operator() (const LO& lclRowInd) const
+  {
+    using Kokkos::ALL;
+
+    // Get row offset
+    const size_t absOffset = ptr_[lclRowInd];
+
+    // Get offset relative to start of row
+    const size_t relOffset = diagOffsets_[lclRowInd];
+
+    // Get the total offset
+    const size_t pointOffset = (absOffset+relOffset)*offsetPerBlock_;
+
+    // Get a view of the block.  BCRS currently uses LayoutRight
+    // regardless of the device.
+    typedef Kokkos::View<const impl_scalar_type**, Kokkos::LayoutRight,
+      device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+      const_little_block_type;
+    const_little_block_type D_in (val_.ptr_on_device () + pointOffset,
+                                  blockSize_, blockSize_);
+    auto D_out = Kokkos::subview (diag_, lclRowInd, ALL (), ALL ());
+    COPY (D_in, D_out);
+  }
+
+  private:
+    diag_type diag_;
+    diag_offsets_type diagOffsets_;
+    abs_offset_type ptr_;
+    LO blockSize_;
+    LO offsetPerBlock_;
+    values_type val_;
+  };
+} // namespace (anonymous)
 
   template<class Scalar, class LO, class GO, class Node>
   std::ostream&
@@ -426,21 +535,14 @@ namespace Experimental {
       offsets.resize (lclNumRows);
     }
 
-    // Kokkos #178 (closed because it was considered a question, not
-    // because it was resolved) talks about how the first argument
-    // of this metafunction (despite its name) must be a memory
-    // space, not an execution space.
-    using Kokkos::Impl::VerifyExecutionCanAccessMemorySpace;
-    const bool canReachHost =
-      VerifyExecutionCanAccessMemorySpace<typename device_type::memory_space,
-                                          Kokkos::HostSpace>::value;
-    if (canReachHost) {
-      // This matrix's execution space can access host memory.  Thus,
-      // we don't need to copy.
-      //
+    // The input ArrayRCP must always be a host pointer.  Thus, if
+    // device_type::memory_space is Kokkos::HostSpace, it's OK for us
+    // to write to that allocation directly as a Kokkos::View.
+    typedef typename device_type::memory_space memory_space;
+    if (std::is_same<memory_space, Kokkos::HostSpace>::value) {
       // It is always syntactically correct to assign a raw host
       // pointer to a device View, so this code will compile correctly
-      // (though never execute) even if canReachHost is false.
+      // even if this branch never runs.
       typedef Kokkos::View<size_t*, device_type,
                            Kokkos::MemoryUnmanaged> output_type;
       output_type offsetsOut (offsets.getRawPtr (), lclNumRows);
@@ -482,7 +584,7 @@ namespace Experimental {
     const LO blockSize = getBlockSize ();
     Teuchos::Array<impl_scalar_type> localMem (blockSize);
     Teuchos::Array<impl_scalar_type> localMat (blockSize*blockSize);
-    little_vec_type X_lcl (localMem.getRawPtr (), blockSize, 1);
+    little_vec_type X_lcl (localMem.getRawPtr (), blockSize);
 
     // FIXME (mfh 12 Aug 2014) This probably won't work if LO is unsigned.
     LO rowBegin = 0, rowEnd = 0, rowStride = 0;
@@ -605,7 +707,7 @@ namespace Experimental {
   }
 
   template <class Scalar, class LO, class GO, class Node>
-  void
+  void TPETRA_DEPRECATED
   BlockCrsMatrix<Scalar,LO,GO,Node>::
   getLocalDiagCopy (BlockCrsMatrix<Scalar,LO,GO,Node>& diag,
                     const Teuchos::ArrayView<const size_t>& offsets) const
@@ -645,8 +747,7 @@ namespace Experimental {
   {
     using Kokkos::ALL;
     using Kokkos::parallel_for;
-    typedef typename Kokkos::View<impl_scalar_type***, device_type,
-      Kokkos::MemoryUnmanaged>::HostMirror::execution_space host_exec_space;
+    typedef typename device_type::execution_space execution_space;
 
     const LO lclNumMeshRows = static_cast<LO> (rowMeshMap_.getNodeNumElements ());
     const LO blockSize = this->getBlockSize ();
@@ -664,13 +765,10 @@ namespace Experimental {
 
     // mfh 12 Dec 2015: Use the host execution space, since we haven't
     // quite made everything work with CUDA yet.
-    typedef Kokkos::RangePolicy<host_exec_space, LO> policy_type;
-    parallel_for (policy_type (0, lclNumMeshRows), [=] (const LO& lclMeshRow) {
-        const size_t offset = offsets(lclMeshRow);
-        auto D_in = this->getConstLocalBlockFromRelOffset (lclMeshRow, offset);
-        auto D_out = Kokkos::subview (diag, lclMeshRow, ALL (), ALL ());
-        COPY (D_in, D_out);
-      });
+    typedef Kokkos::RangePolicy<execution_space, LO> policy_type;
+    typedef GetLocalDiagCopy<Scalar,LO,GO,Node> functor_type;
+    parallel_for (policy_type (0, lclNumMeshRows),
+                  functor_type (diag, valView_, offsets, ptr_, blockSize_));
   }
 
 
@@ -1136,7 +1234,21 @@ namespace Experimental {
         }
       }
 
-      localApplyBlockNoTrans (*X_colMap, *Y_rowMap, alpha, beta);
+      try {
+        localApplyBlockNoTrans (*X_colMap, *Y_rowMap, alpha, beta);
+      }
+      catch (std::exception& e) {
+        TEUCHOS_TEST_FOR_EXCEPTION
+          (true, std::runtime_error, "Tpetra::Experimental::BlockCrsMatrix::"
+           "applyBlockNoTrans: localApplyBlockNoTrans threw an exception: "
+           << e.what ());
+      }
+      catch (...) {
+        TEUCHOS_TEST_FOR_EXCEPTION
+          (true, std::runtime_error, "Tpetra::Experimental::BlockCrsMatrix::"
+           "applyBlockNoTrans: localApplyBlockNoTrans threw some exception "
+           "that is not a subclass of std::exception.");
+      }
 
       if (! theExport.is_null ()) {
         Y.doExport (*Y_rowMap, *theExport, Tpetra::REPLACE);
@@ -1159,18 +1271,146 @@ namespace Experimental {
     const LO numLocalMeshRows =
       static_cast<LO> (rowMeshMap_.getNodeNumElements ());
     const LO numVecs = static_cast<LO> (X.getNumVectors ());
-
-    // If using (new) Kokkos, replace localMem with thread-local
-    // memory.  Note that for larger block sizes, this will affect the
-    // two-level parallelization.  Look to Stokhos for best practice
-    // on making this fast for GPUs.
     const LO blockSize = getBlockSize ();
-    Teuchos::Array<impl_scalar_type> localMem (blockSize);
-    little_vec_type Y_lcl (localMem.getRawPtr (), blockSize, 1);
 
-    if (numVecs == 1) {
+    // FIXME (mfh 23 May 2016, 25 May 2016) See #393 and #178, as well
+    // as comments defining this macro at the top of this file.
+#if defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+    // KJ : workset size; for now, let's just give a number
+    const int rowsPerTeam = 20;
+
+    typedef Kokkos::TeamPolicy<Kokkos::Schedule<Kokkos::Dynamic>,execution_space> team_policy_type;
+    team_policy_type team_exec((numLocalMeshRows + rowsPerTeam - 1)/rowsPerTeam, Kokkos::AUTO());
+    {
+      const int level = 1; // KJ : hierarchy level of memory allocated e.g., cache (1), HBM (2), DDR (3), not used for now
+
+      // KJ : for now provide two options for parallelizing (for vs. reduce)
+      const int scratchSizePerTeam   = blockSize*sizeof(impl_scalar_type); // used for team parallel_red
+      const int scratchSizePerThread = blockSize*sizeof(impl_scalar_type); // used for team parallel_for
+      team_exec = team_exec.set_scratch_size( level,
+                                              Kokkos::PerTeam  (scratchSizePerTeam),
+                                              Kokkos::PerThread(scratchSizePerThread) );
+    }
+#endif // defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+
+    // KJ : do we really need to separate numVecs == 1 and multiple numVecs ?
+
+    for (LO j = 0; j < numVecs; ++j) {
+#if defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+#  if 1 // team parallel for version
+      Kokkos::parallel_for( team_exec, KOKKOS_LAMBDA( const typename team_policy_type::member_type & member ) {
+          const LO leagueRank = member.league_rank();
+
+          typedef typename execution_space::scratch_memory_space shmem_space ;
+
+          // FIXME (mfh 23 May 2016) This code needs to build even if
+          // the CUDA option for device lambdas is not enabled.  Thus,
+          // I'm using the host execution space for now.  See #178.
+          //
+          //typedef Kokkos::View<impl_scalar_type*,shmem_space,Kokkos::MemoryUnmanaged> shared_array_type;
+          typedef typename Kokkos::View<impl_scalar_type*,shmem_space,Kokkos::MemoryUnmanaged>::HostMirror shared_array_type;
+
+          shared_array_type threadLocalMem = shared_array_type(member.thread_scratch(1), blockSize);
+          little_vec_type Y_tlm (threadLocalMem.ptr_on_device (), blockSize, 1);
+
+          const LO rowBeg = leagueRank*rowsPerTeam;
+          const LO rowTmp = rowBeg + rowsPerTeam;
+          const LO rowEnd = rowTmp < numLocalMeshRows ? rowTmp : numLocalMeshRows;
+
+          Kokkos::parallel_for( Kokkos::TeamThreadRange(member, rowBeg, rowEnd), [&](const LO lclRow) {
+              little_vec_type Y_cur = Y.getLocalBlock (lclRow, j);
+
+              if (beta == zero) {
+                FILL (Y_tlm, zero);
+              } else if (beta == one) {
+                COPY (Y_cur, Y_tlm);
+              } else {
+                COPY (Y_cur, Y_tlm);
+                SCAL (beta, Y_tlm);
+              }
+
+              const size_t meshBeg = ptr_[lclRow];
+              const size_t meshEnd = ptr_[lclRow+1];
+
+              for (size_t absBlkOff = meshBeg; absBlkOff < meshEnd; ++absBlkOff) {
+                const LO meshCol = ind_[absBlkOff];
+                const_little_block_type A_cur =
+                  getConstLocalBlockFromAbsOffset (absBlkOff);
+                little_vec_type X_cur = X.getLocalBlock (meshCol, j);
+                // Y_tlm += alpha*A_cur*X_cur
+                //Y_tlm.matvecUpdate (alpha, A_cur, X_cur);
+                GEMV (alpha, A_cur, X_cur, Y_tlm);
+              } // for each entry in the current local row of the matrx
+
+              COPY (Y_tlm, Y_cur);
+            } ); // for each workset of rows
+        } ); // for each local row of the matrix
+#  else // team reduction version
+      Kokkos::parallel_for( team_exec, KOKKOS_LAMBDA( const typename team_policy_type::member_type & member ) {
+          const LO leagueRank = member.league_rank();
+
+          typedef typename execution_space::scratch_memory_space shmem_space ;
+          typedef Kokkos::View<impl_scalar_type*,shmem_space,Kokkos::MemoryUnmanaged> shared_array_type;
+
+          shared_array_type threadLocalMem = shared_array_type(member.thread_scratch(1), blockSize);
+          little_vec_type Y_tlm (threadLocalMem.ptr_on_device (), blockSize, 1);
+
+          shared_array_type sharedTeamMem = shared_array_type(member.team_scratch(1), blockSize);
+          little_vec_type Y_stm (sharedTeamMem.ptr_on_device (), blockSize, 1);
+
+          const LO rowBeg = leagueRank*rowsPerTeam;
+          const LO rowTmp = rowBeg + rowsPerTeam;
+          const LO rowEnd = rowTmp < numLocalMeshRows ? rowTmp : numLocalMeshRows;
+
+          for (LO lclRow = rowBeg; lclRow < rowEnd; ++lclRow) {
+            little_vec_type Y_cur = Y.getLocalBlock (lclRow, j);
+
+            FILL (Y_stm, zero);
+            if (beta == zero) {
+              FILL (Y_tlm, zero);
+            } else if (beta == one) {
+              COPY (Y_cur, Y_tlm);
+            } else {
+              COPY (Y_cur, Y_tlm);
+              SCAL (beta, Y_tlm);
+            }
+
+            const size_t meshBeg = ptr_[lclRow];
+            const size_t meshEnd = ptr_[lclRow+1];
+
+            // KJ : cannot pass little_vec_type as it does not have a default constructor;
+            // even if it exists, it should be initialized thread local little vector.
+            // attempted to bypass the problem but it would not work anyway
+            // ( it will linearize join or need lock inside ).
+            //
+            int dummy = 0;
+            Kokkos::parallel_reduce( Kokkos::TeamThreadRange(member, meshBeg, meshEnd), [&](const LO absBlkOff, int) {
+                const LO meshCol = ind_[absBlkOff];
+                const_little_block_type A_cur =
+                  getConstLocalBlockFromAbsOffset (absBlkOff);
+                little_vec_type X_cur = X.getLocalBlock (meshCol, j);
+                // Y_tlm += alpha*A_cur*X_cur
+                //Y_tlm.matvecUpdate (alpha, A_cur, X_cur);
+                GEMV (alpha, A_cur, X_cur, Y_tlm);
+              }, [&] (int, int) {
+                AXPY (one, Y_tlm, Y_stm);
+              }, dummy ); // for each entry in the current local row of the matrx
+
+              COPY (Y_stm, Y_cur);
+          } // for each workset of rows
+        } ); // for each local row of the matrix
+
+#  endif // 1
+#else // ! defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
+
+      // FIXME (mfh 23 May 2016, 25 May 2016) See #393, #178, and
+      // comments at the top of this function and file.
+
+      Teuchos::Array<impl_scalar_type> localMem (blockSize);
+      little_vec_type Y_lcl (localMem.getRawPtr (), blockSize, 1);
+
       for (LO lclRow = 0; lclRow < numLocalMeshRows; ++lclRow) {
-        little_vec_type Y_cur = Y.getLocalBlock (lclRow, 0);
+        little_vec_type Y_cur = Y.getLocalBlock (lclRow, j);
 
         if (beta == zero) {
           FILL (Y_lcl, zero);
@@ -1187,45 +1427,18 @@ namespace Experimental {
           const LO meshCol = ind_[absBlkOff];
           const_little_block_type A_cur =
             getConstLocalBlockFromAbsOffset (absBlkOff);
-          little_vec_type X_cur = X.getLocalBlock (meshCol, 0);
+          little_vec_type X_cur = X.getLocalBlock (meshCol, j);
           // Y_lcl += alpha*A_cur*X_cur
           //Y_lcl.matvecUpdate (alpha, A_cur, X_cur);
           GEMV (alpha, A_cur, X_cur, Y_lcl);
-        } // for each entry in the current local row of the matrx
+        } // for each entry in the current local row of the matrix
 
         COPY (Y_lcl, Y_cur);
       } // for each local row of the matrix
-    }
-    else {
-      for (LO lclRow = 0; lclRow < numLocalMeshRows; ++lclRow) {
-        for (LO j = 0; j < numVecs; ++j) {
-          little_vec_type Y_cur = Y.getLocalBlock (lclRow, j);
 
-          if (beta == zero) {
-            FILL (Y_lcl, zero);
-          } else if (beta == one) {
-            COPY (Y_cur, Y_lcl);
-          } else {
-            COPY (Y_cur, Y_lcl);
-            SCAL (beta, Y_lcl);
-          }
+#endif // defined(TPETRA_BLOCKCRSMATRIX_APPLY_USE_LAMBDA)
 
-          const size_t meshBeg = ptr_[lclRow];
-          const size_t meshEnd = ptr_[lclRow+1];
-          for (size_t absBlkOff = meshBeg; absBlkOff < meshEnd; ++absBlkOff) {
-            const LO meshCol = ind_[absBlkOff];
-            const_little_block_type A_cur =
-              getConstLocalBlockFromAbsOffset (absBlkOff);
-            little_vec_type X_cur = X.getLocalBlock (meshCol, j);
-            // Y_lcl += alpha*A_cur*X_cur
-            //Y_lcl.matvecUpdate (alpha, A_cur, X_cur);
-            GEMV (alpha, A_cur, X_cur, Y_lcl);
-          } // for each entry in the current local row of the matrix
-
-          COPY (Y_lcl, Y_cur);
-        } // for each entry in the current row of Y
-      } // for each local row of the matrix
-    }
+    } // for each column j of the input / output block multivector
   }
 
   template<class Scalar, class LO, class GO, class Node>
@@ -1297,7 +1510,7 @@ namespace Experimental {
   {
     // Row major blocks
     const LO rowStride = blockSize_;
-    return const_little_block_type (val + pointOffset, blockSize_, rowStride, 1);
+    return const_little_block_type (val + pointOffset, blockSize_, rowStride);
   }
 
   template<class Scalar, class LO, class GO, class Node>
@@ -1308,7 +1521,7 @@ namespace Experimental {
   {
     // Row major blocks
     const LO rowStride = blockSize_;
-    return little_block_type (val + pointOffset, blockSize_, rowStride, 1);
+    return little_block_type (val + pointOffset, blockSize_, rowStride);
   }
 
   template<class Scalar, class LO, class GO, class Node>
@@ -1320,7 +1533,7 @@ namespace Experimental {
       // An empty block signifies an error.  We don't expect to see
       // this error in correct code, but it's helpful for avoiding
       // memory corruption in case there is a bug.
-      return const_little_block_type (NULL, 0, 0, 0);
+      return const_little_block_type ();
     } else {
       const size_t absPointOffset = absBlockOffset * offsetPerBlock ();
       return getConstLocalBlockFromInput (val_, absPointOffset);
@@ -1344,7 +1557,7 @@ namespace Experimental {
       // An empty block signifies an error.  We don't expect to see
       // this error in correct code, but it's helpful for avoiding
       // memory corruption in case there is a bug.
-      return const_little_block_type (NULL, 0, 0, 0);
+      return const_little_block_type ();
     }
     else {
       const size_t relPointOffset = relMeshOffset * this->offsetPerBlock ();
@@ -1363,7 +1576,7 @@ namespace Experimental {
       // An empty block signifies an error.  We don't expect to see
       // this error in correct code, but it's helpful for avoiding
       // memory corruption in case there is a bug.
-      return little_block_type (NULL, 0, 0, 0);
+      return little_block_type ();
     } else {
       const size_t absPointOffset = absBlockOffset * offsetPerBlock ();
       return getNonConstLocalBlockFromInput (const_cast<impl_scalar_type*> (val_),
@@ -1385,7 +1598,7 @@ namespace Experimental {
       return getNonConstLocalBlockFromAbsOffset (absBlockOffset);
     }
     else {
-      return little_block_type (NULL, 0, 0, 0);
+      return little_block_type ();
     }
   }
 
@@ -2940,7 +3153,7 @@ namespace Experimental {
   BlockCrsMatrix<Scalar, LO, GO, Node>::
   supportsRowViews() const
   {
-    return true;
+    return false;
   }
 
 
@@ -2979,8 +3192,8 @@ namespace Experimental {
                    Teuchos::ArrayView<const Scalar> &values) const
   {
     TEUCHOS_TEST_FOR_EXCEPTION(
-      true, std::logic_error, "Tpetra::Experimental::BlockCrsMatrix::getGlobalRowView: "
-      "This class doesn't support global matrix indexing.");
+      true, std::logic_error, "Tpetra::Experimental::BlockCrsMatrix::getLocalRowView: "
+      "This class doesn't support local matrix indexing.");
 
   }
 

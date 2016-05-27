@@ -162,6 +162,12 @@ SET(HEADERS ${HEADERS}
   Sacado_Handle.hpp
   )
 
+# TEMPLATE
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/template)
+SET(HEADERS ${HEADERS}
+  template/Sacado_TemplateContainer.hpp
+  )
+
 IF (${PACKAGE_NAME}_ENABLE_Teuchos)
 
   # BLAS
@@ -175,12 +181,10 @@ IF (${PACKAGE_NAME}_ENABLE_Teuchos)
     )
 
   # TEMPLATE
-  INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/template)
   SET(HEADERS ${HEADERS}
     template/Sacado_TemplateManager.hpp
     template/Sacado_TemplateManagerImp.hpp
     template/Sacado_TemplateIterator.hpp
-    template/Sacado_TemplateContainer.hpp
     )
 
   IF (${PACKAGE_NAME}_ENABLE_PARAMLIB)
@@ -260,8 +264,9 @@ SET(HEADERS ${HEADERS}
   Kokkos_View_Fad.hpp
   Kokkos_DynRankView_Fad.hpp
   Kokkos_AnalyzeSacadoShape.hpp
+  Kokkos_LayoutContiguous.hpp
   KokkosExp_View_Fad.hpp
-  KokkosExp_ViewFactory.hpp
+  Kokkos_ViewFactory.hpp
   Sacado_DisableKokkosCuda.hpp
   Sacado_MathFunctions.hpp
   Sacado_cmath.hpp

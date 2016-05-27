@@ -17,7 +17,7 @@ TRIBITS_ADD_OPTION_AND_DEFINE(${PACKAGE_NAME}_ENABLE_DEBUG
 
 TRIBITS_ADD_OPTION_AND_DEFINE(${PACKAGE_NAME}_ENABLE_FADTYPE
   PANZER_FADTYPE
-  "Build with debug code enabled."
+  "Choose the Sacado automatic differentiation scalart type (default is DFad)."
   "Sacado::Fad::DFad<RealType>" )
 
 TRIBITS_ADD_ENABLE_TEUCHOS_TIME_MONITOR_OPTION()
@@ -27,6 +27,10 @@ IF(Teuchos_ENABLE_LONG_LONG_INT AND  Tpetra_INST_INT_LONG_LONG)
 ELSE()
    GLOBAL_SET(PANZER_HAVE_LONG_LONG_INT OFF)
 ENDIF()
+
+GLOBAL_SET(PANZER_UNIT_TEST_MAIN
+  "${PHALANX_UNIT_TEST_MAIN}")
+
 
 # Explicit Template Instantiation
 

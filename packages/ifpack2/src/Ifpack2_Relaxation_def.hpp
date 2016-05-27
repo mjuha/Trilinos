@@ -55,6 +55,11 @@
 #include <KokkosKernels_GaussSeidel.hpp>
 #endif
 
+#ifdef HAVE_IFPACK2_DUMP_MTX_MATRIX
+ #include <MatrixMarket_Tpetra.hpp>
+#endif
+
+
 // mfh 28 Mar 2013: Uncomment out these three lines to compute
 // statistics on diagonal entries in compute().
 // #ifndef IFPACK2_RELAXATION_COMPUTE_DIAGONAL_STATS
@@ -579,6 +584,8 @@ void Relaxation<MatrixType>::initialize ()
       hasBlockCrsMatrix_ = true;
     }
   }
+
+
 #ifdef HAVE_IFPACK2_AND_TPETRAKERNELS_EXPERIMENTAL
     //KokkosKernels GaussSiedel Initialization.
     if (PrecType_ == Ifpack2::Details::MTGS || PrecType_ == Ifpack2::Details::MTSGS) {
@@ -586,6 +593,13 @@ void Relaxation<MatrixType>::initialize ()
       TEUCHOS_TEST_FOR_EXCEPTION(
           crsMat == NULL, std::runtime_error, "Ifpack2::Relaxation::compute: "
           "MT methods works for CRSMatrix Only.");
+
+#ifdef HAVE_IFPACK2_DUMP_MTX_MATRIX
+      Tpetra::MatrixMarket::Writer<crs_matrix_type> crs_writer;
+      std::string file_name = "Ifpack2_MT_GS.mtx";
+      Teuchos::RCP<const crs_matrix_type> rcp_crs_mat = Teuchos::rcp_dynamic_cast<const crs_matrix_type> (A_);
+      crs_writer.writeSparseFile(file_name, rcp_crs_mat);
+#endif
 
       this->kh = Teuchos::rcp(new KernelHandle());
       if (kh->get_gs_handle() == NULL){
@@ -613,6 +627,63 @@ void Relaxation<MatrixType>::initialize ()
   ++NumInitialize_;
   isInitialized_ = true;
 
+}
+
+namespace Impl {
+template <typename BlockDiagView>
+struct InvertDiagBlocks {
+  typedef int value_type;
+  typedef typename BlockDiagView::size_type Size;
+
+private:
+  typedef Kokkos::MemoryTraits<Kokkos::Unmanaged> Unmanaged;
+  template <typename View>
+  using UnmanagedView = Kokkos::View<typename View::data_type, typename View::array_layout,
+                                     typename View::device_type, Unmanaged>;
+
+  typedef typename BlockDiagView::non_const_value_type Scalar;
+  typedef typename BlockDiagView::device_type Device;
+  typedef Kokkos::View<Scalar**, Kokkos::LayoutRight, Device> RWrk;
+  typedef Kokkos::View<int**, Kokkos::LayoutRight, Device> IWrk;
+
+  UnmanagedView<BlockDiagView> block_diag_;
+  // TODO Use thread team and scratch memory space. In this first
+  // pass, provide workspace for each block.
+  RWrk rwrk_buf_;
+  UnmanagedView<RWrk> rwrk_;
+  IWrk iwrk_buf_;
+  UnmanagedView<IWrk> iwrk_;
+
+public:
+  InvertDiagBlocks (BlockDiagView& block_diag)
+    : block_diag_(block_diag)
+  {
+    const auto blksz = block_diag.dimension_1();
+    Kokkos::resize(rwrk_buf_, block_diag_.dimension_0(), blksz);
+    rwrk_ = rwrk_buf_;
+    Kokkos::resize(iwrk_buf_, block_diag_.dimension_0(), blksz);
+    iwrk_ = iwrk_buf_;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator() (const Size i, int& jinfo) const {
+    auto D_cur = Kokkos::subview(block_diag_, i, Kokkos::ALL(), Kokkos::ALL());
+    auto ipiv = Kokkos::subview(iwrk_, i, Kokkos::ALL());
+    auto work = Kokkos::subview(rwrk_, i, Kokkos::ALL());
+    int info = 0;
+    Tpetra::Experimental::GETF2(D_cur, ipiv, info);
+    if (info) {
+      ++jinfo;
+      return;
+    }
+    Tpetra::Experimental::GETRI(D_cur, ipiv, work, info);
+    if (info) ++jinfo;
+  }
+
+  // Report the number of blocks with errors.
+  KOKKOS_INLINE_FUNCTION
+  void join (volatile value_type& dst, volatile value_type const& src) const { dst += src; }
+};
 }
 
 template<class MatrixType>
@@ -722,22 +793,12 @@ void Relaxation<MatrixType>::computeBlockCrs ()
     }
 
     int info = 0;
-    // GETRI needs workspace.  Use host space for now.  Once we
-    // parallelize this setup phase, we'll need to use Kokkos' new
-    // MemoryPool feature.  At that point, it will make sense to use
-    // device memory for the memory pool.
-    Kokkos::View<IST*, host_device_type> work ("work", blockSize);
-    Kokkos::View<int*, host_device_type> ipiv ("ipiv", blockSize);
-    for (LO i = 0 ; i < lclNumMeshRows; ++i) {
-      auto D_cur = Kokkos::subview (blockDiag, i, ALL (), ALL ());
-      Tpetra::Experimental::GETF2 (D_cur, ipiv, info);
+    {
+      Impl::InvertDiagBlocks<unmanaged_block_diag_type> idb(blockDiag);
+      Kokkos::parallel_reduce(lclNumMeshRows, idb, info);
       TEUCHOS_TEST_FOR_EXCEPTION
-        (info != 0, std::runtime_error, "GETF2 failed with info = " << info
-         << " != 0.");
-      Tpetra::Experimental::GETRI (D_cur, ipiv, work, info);
-      TEUCHOS_TEST_FOR_EXCEPTION
-        (info != 0, std::runtime_error, "GETRI failed with info = " << info
-         << " != 0.");
+        (info > 0, std::runtime_error, "GETF2 or GETRI failed on = " << info
+         << " diagonal blocks.");
     }
 
     // In a debug build, do an extra test to make sure that all the
@@ -1773,12 +1834,12 @@ void Relaxation<MatrixType>::MTGaussSeidel (
     X_domainMap = X_colMap->offsetViewNonConst (domainMap, 0);
 
 #ifdef HAVE_TPETRA_DEBUG
-    typename MV::dual_view_type X_colMap_view = X_colMap->getDualView ();
-    typename MV::dual_view_type X_domainMap_view = X_domainMap->getDualView ();
+    auto X_colMap_host_view = X_colMap->template getLocalView<Kokkos::HostSpace> ();
+    auto X_domainMap_host_view = X_domainMap->template getLocalView<Kokkos::HostSpace> ();
 
     if (X_colMap->getLocalLength () != 0 && X_domainMap->getLocalLength ()) {
       TEUCHOS_TEST_FOR_EXCEPTION(
-        X_colMap_view.h_view.ptr_on_device () != X_domainMap_view.h_view.ptr_on_device (),
+        X_colMap_host_view.ptr_on_device () != X_domainMap_host_view.h_view.ptr_on_device (),
         std::logic_error, "Ifpack2::Relaxation::MTGaussSeidel: "
         "Pointer to start of column Map view of X is not equal to pointer to "
         "start of (domain Map view of) X.  This may mean that "
@@ -1787,13 +1848,13 @@ void Relaxation<MatrixType>::MTGaussSeidel (
     }
 
     TEUCHOS_TEST_FOR_EXCEPTION(
-      X_colMap_view.dimension_0 () < X_domainMap_view.dimension_0 () ||
+      X_colMap_host_view.dimension_0 () < X_domainMap_host_view.dimension_0 () ||
       X_colMap->getLocalLength () < X_domainMap->getLocalLength (),
       std::logic_error, "Ifpack2::Relaxation::MTGaussSeidel: "
       "X_colMap has fewer local rows than X_domainMap.  "
-      "X_colMap_view.dimension_0() = " << X_colMap_view.dimension_0 ()
-      << ", X_domainMap_view.dimension_0() = "
-      << X_domainMap_view.dimension_0 ()
+      "X_colMap_host_view.dimension_0() = " << X_colMap_host_view.dimension_0 ()
+      << ", X_domainMap_host_view.dimension_0() = "
+      << X_domainMap_host_view.dimension_0 ()
       << ", X_colMap->getLocalLength() = " << X_colMap->getLocalLength ()
       << ", and X_domainMap->getLocalLength() = "
       << X_domainMap->getLocalLength ()

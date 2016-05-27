@@ -62,7 +62,7 @@
 // 2D basis 
 #include "Intrepid2_HGRAD_QUAD_C1_FEM.hpp"
 
-#include "Intrepid2_FieldContainer.hpp"
+#include "Kokkos_DynRankView.hpp"
 
 #include "Epetra_MpiComm.h"
 #include "Epetra_SerialComm.h"
@@ -72,7 +72,7 @@ using Teuchos::rcp_dynamic_cast;
 using Teuchos::RCP;
 using Teuchos::rcpFromRef;
 
-typedef Intrepid2::FieldContainer<double> FieldContainer;
+typedef Kokkos::DynRankView<double,PHX::Device> FieldContainer;
 
 namespace panzer {
 
@@ -88,7 +88,6 @@ Teuchos::RCP<const panzer::FieldPattern> buildFieldPattern()
 // this just excercises a bunch of functions
 TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,assortedTests)
 {
-  PHX::InitializeKokkosDevice();
 
    // build global (or serial communicator)
    #ifdef HAVE_MPI
@@ -138,12 +137,10 @@ TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,assortedTests)
    TEST_ASSERT(dofManager.getElementBlock("block_1")==connManager->getElementBlock("block_1"));
    TEST_ASSERT(dofManager.getElementBlock("block_2")==connManager->getElementBlock("block_2"));
 
-   PHX::FinalizeKokkosDevice();
 }
 
 TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,registerFields)
 {
-  PHX::InitializeKokkosDevice();
 
    // build global (or serial communicator)
    #ifdef HAVE_MPI
@@ -270,12 +267,10 @@ TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,registerFields)
    TEST_EQUALITY(blk2fn[0],4);
    TEST_EQUALITY(blk2fn[1],5);
 
-   PHX::FinalizeKokkosDevice();
 }
 
 TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,buildGlobalUnknowns)
 {
-  PHX::InitializeKokkosDevice();
 
    // build global (or serial communicator)
    #ifdef HAVE_MPI
@@ -389,12 +384,10 @@ TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,buildGlobalUnknowns)
       TEST_EQUALITY(fb2,0);
    }
 
-   PHX::FinalizeKokkosDevice();
 }
 
 TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,getElement_gids_fieldoffsets)
 {
-  PHX::InitializeKokkosDevice();
 
    // build global (or serial communicator)
    #ifdef HAVE_MPI
@@ -568,12 +561,10 @@ TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,getElement_gids_fieldoffsets)
          TEST_EQUALITY(vec->first[i],dofManager.getBlockGIDOffset("block_2",2)+sub_vec->first[i]);
    }
 
-   PHX::FinalizeKokkosDevice();
 }
 
 TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,validFieldOrder)
 {
-  PHX::InitializeKokkosDevice();
 
    BlockedDOFManager<int,int> dofManager; 
    dofManager.setUseDOFManagerFEI(false);
@@ -665,12 +656,10 @@ TEUCHOS_UNIT_TEST(tBlockedDOFManager_SimpleTests,validFieldOrder)
       TEST_ASSERT(!dofManager.validFieldOrder(order,validFields));
    }
 
-   PHX::FinalizeKokkosDevice();
 }
 
 TEUCHOS_UNIT_TEST(tBlockedDOFManager,mergetests)
 {
-  PHX::InitializeKokkosDevice();
 
    // build global (or serial communicator)
    #ifdef HAVE_MPI
@@ -833,7 +822,6 @@ TEUCHOS_UNIT_TEST(tBlockedDOFManager,mergetests)
        }
      }
    }
-   PHX::FinalizeKokkosDevice();
 }
 
 }

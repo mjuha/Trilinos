@@ -155,7 +155,7 @@ SET( Trilinos_TPLS_FINDMODS_CLASSIFICATIONS
   MA28            "cmake/TPLs/"    TS
   AMD             "cmake/TPLs/"    TS
   CSparse         "cmake/TPLs/"    EX
-  HYPRE           "cmake/TPLs/"    EX
+  HYPRE           "${${PROJECT_NAME}_TRIBITS_DIR}/common_tpls/"   EX
   PETSC           "${${PROJECT_NAME}_TRIBITS_DIR}/common_tpls/"   SS
   BLACS           "cmake/TPLs/"    SS
   SCALAPACK       "cmake/TPLs/"    SS
@@ -203,6 +203,8 @@ SET( Trilinos_TPLS_FINDMODS_CLASSIFICATIONS
   VTune           "cmake/TPLs/"    SS
   TASMANIAN       "cmake/TPLs/"    EX
   ArrayFireCPU    "cmake/TPLs/"    EX
+  SimMesh         "SCOREC/cmake/TPLs/"    EX
+  SimModel        "SCOREC/cmake/TPLs/"    EX
   )
 
 # NOTES:

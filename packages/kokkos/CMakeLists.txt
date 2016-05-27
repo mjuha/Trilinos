@@ -1,4 +1,15 @@
 
+IF(COMMAND TRIBITS_PACKAGE_DECL)
+  SET(KOKKOS_HAS_TRILINOS ON CACHE BOOL "")
+ELSE()
+  SET(KOKKOS_HAS_TRILINOS OFF CACHE BOOL "")
+ENDIF()
+
+IF(NOT KOKKOS_HAS_TRILINOS)
+  CMAKE_MINIMUM_REQUIRED(VERSION 2.8.11 FATAL_ERROR)
+  INCLUDE(cmake/tribits.cmake)
+ENDIF()
+
 #
 # A) Forward delcare the package so that certain options are also defined for
 # subpackages
@@ -39,8 +50,13 @@ TRIBITS_ADD_OPTION_AND_DEFINE(
   Kokkos_ENABLE_Pthread
   KOKKOS_HAVE_PTHREAD
   "Enable Pthread support in Kokkos."
-  "${TPL_ENABLE_Pthread}"
+  OFF
   )
+
+ASSERT_DEFINED(TPL_ENABLE_Pthread)
+IF (Kokkos_ENABLE_Pthread AND NOT TPL_ENABLE_Pthread)
+  MESSAGE(FATAL_ERROR "You set Kokkos_ENABLE_Pthread=ON, but Trilinos' support for Pthread(s) is not enabled (TPL_ENABLE_Pthread=OFF).  This is not allowed.  Please enable Pthreads in Trilinos before attempting to enable Kokkos' support for Pthreads.")
+ENDIF ()
 
 TRIBITS_ADD_OPTION_AND_DEFINE(
   Kokkos_ENABLE_OpenMP

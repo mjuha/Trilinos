@@ -73,8 +73,6 @@ private:
   typedef typename Adapter::scalar_t scalar_t;
   typedef StridedData<lno_t, scalar_t> input_t;
 
-  const RCP<const Environment> env_;
-
   part_t numGlobalParts_;           // desired
   part_t targetGlobalParts_;        // actual
   part_t numNonEmpty_;              // of actual
@@ -84,25 +82,86 @@ private:
   ArrayRCP<GraphMetricValues<scalar_t> > graphMetrics_;
   ArrayRCP<const GraphMetricValues<scalar_t> > graphMetricsConst_;
 
+  void sharedConstructor(const Adapter *ia,
+			 ParameterList *p,
+			 const RCP<const Comm<int> > &problemComm,
+			 const PartitioningSolution<Adapter> *soln,
+			 const RCP<const GraphModel
+			 <typename Adapter::base_adapter_t> > &graphModel);
+
 public:
 
-  /*! \brief Constructor
-      \param env   the problem environment
-      \param problemComm  the problem communicator
+  /*! \brief Constructor where communicator is Teuchos default.
       \param ia the problem input adapter
+      \param p the parameter list
       \param soln  the solution
       \param graphModel the graph model
 
       The constructor does global communication to compute the metrics.
       The rest of the  methods are local.
    */
-  EvaluatePartition(const RCP<const Environment> &env,
-    const RCP<const Comm<int> > &problemComm,
-    const Adapter *ia, 
-    const ParameterList *p,
+    EvaluatePartition(const Adapter *ia, 
+    ParameterList *p,
     const PartitioningSolution<Adapter> *soln,
     const RCP<const GraphModel<typename Adapter::base_adapter_t> > &graphModel=
-		    Teuchos::null);
+		    Teuchos::null):
+    numGlobalParts_(0), targetGlobalParts_(0), numNonEmpty_(0), metrics_(),
+    metricsConst_(), graphMetrics_(), graphMetricsConst_()
+    {
+      RCP<const Comm<int> > problemComm = DefaultComm<int>::getComm();
+      sharedConstructor(ia, p, problemComm, soln, graphModel);
+    }
+
+
+  /*! \brief Constructor where Teuchos communicator is specified
+      \param ia the problem input adapter
+      \param p the parameter list
+      \param problemComm  the problem communicator
+      \param soln  the solution
+      \param graphModel the graph model
+
+      The constructor does global communication to compute the metrics.
+      The rest of the  methods are local.
+   */
+    EvaluatePartition(const Adapter *ia, 
+    ParameterList *p,
+    const RCP<const Comm<int> > &problemComm,
+    const PartitioningSolution<Adapter> *soln,
+    const RCP<const GraphModel<typename Adapter::base_adapter_t> > &graphModel=
+		    Teuchos::null):
+    numGlobalParts_(0), targetGlobalParts_(0), numNonEmpty_(0), metrics_(),
+    metricsConst_(), graphMetrics_(), graphMetricsConst_()
+    {
+      sharedConstructor(ia, p, problemComm, soln, graphModel);
+    }
+
+#ifdef HAVE_ZOLTAN2_MPI
+  /*! \brief Constructor for MPI builds
+      \param ia the problem input adapter
+      \param p the parameter list
+      \param comm  the problem communicator
+      \param soln  the solution
+      \param graphModel the graph model
+
+      The constructor does global communication to compute the metrics.
+      The rest of the  methods are local.
+   */
+    EvaluatePartition(const Adapter *ia, 
+    ParameterList *p,
+    MPI_Comm comm,
+    const PartitioningSolution<Adapter> *soln,
+    const RCP<const GraphModel<typename Adapter::base_adapter_t> > &graphModel=
+		    Teuchos::null):
+    numGlobalParts_(0), targetGlobalParts_(0), numNonEmpty_(0), metrics_(),
+    metricsConst_(), graphMetrics_(), graphMetricsConst_()
+    {
+      RCP<Teuchos::OpaqueWrapper<MPI_Comm> > wrapper =
+	Teuchos::opaqueWrapper(comm);
+      RCP<const Comm<int> > problemComm =
+	rcp<const Comm<int> >(new Teuchos::MpiComm<int>(wrapper));
+      sharedConstructor(ia, p, problemComm, soln, graphModel);
+    }
+#endif
 
   /*! \brief Return the metric values.
    *  \param values on return is the array of values.
@@ -170,12 +229,12 @@ public:
    *     to one less than the number of weights provided in the input.
    *  If there were no weights, this is the cut count.
    */
-  void getWeightCut(scalar_t &cut, int idx=0) const{
-    if (graphMetrics_.size() < idx)  // idx too high
-      cut = graphMetrics_[graphMetrics_.size()-1].getGlobalMax();
+  void getMaxWeightedEdgeCut(scalar_t &cut, int idx=0) const{
+    if (idx >= graphMetrics_.size())  // idx too high
+      cut = graphMetrics_[graphMetrics_.size() - 1].getGlobalMax();
     else if (idx < 0)   //  idx too low
       cut = graphMetrics_[0].getGlobalMax();
-    else                       // idx weight
+    else                       // 
       cut = graphMetrics_[idx].getGlobalMax();
   }
 
@@ -188,18 +247,22 @@ public:
   }
 };
 
+  // sharedConstructor
   template <typename Adapter>
-  EvaluatePartition<Adapter>::EvaluatePartition(
-  const RCP<const Environment> &env,
-  const RCP<const Comm<int> > &problemComm,
+  void EvaluatePartition<Adapter>::sharedConstructor(
   const Adapter *ia, 
-  const ParameterList *p,
+  ParameterList *p,
+  const RCP<const Comm<int> > &comm,
   const PartitioningSolution<Adapter> *soln,
-  const RCP<const GraphModel<typename Adapter::base_adapter_t> > &graphModel):
-    env_(env), numGlobalParts_(0), targetGlobalParts_(0), numNonEmpty_(0),
-    metrics_(),  metricsConst_(), graphMetrics_(), graphMetricsConst_()
+  const RCP<const GraphModel<typename Adapter::base_adapter_t> > &graphModel)
 {
-
+  RCP<const Comm<int> > problemComm;
+  if (comm == Teuchos::null) {
+    problemComm = DefaultComm<int>::getComm();//communicator is Teuchos default
+  } else {
+    problemComm = comm;
+  }
+  RCP<Environment> env = rcp(new Environment(*p, problemComm));
   env->debug(DETAILED_STATUS, std::string("Entering EvaluatePartition"));
   env->timerStart(MACRO_TIMERS, "Computing metrics");
 
@@ -207,10 +270,8 @@ public:
   // should check those here.  For now we compute metrics
   // using all weights.
 
-  const Teuchos::ParameterList &pl = env->getParameters();
-
   multiCriteriaNorm mcnorm = normBalanceTotalMaximum;
-  const Teuchos::ParameterEntry *pe = pl.getEntryPtr("partitioning_objective");
+  const Teuchos::ParameterEntry *pe = p->getEntryPtr("partitioning_objective");
   if (pe){
     std::string strChoice = pe->getValue<std::string>(&strChoice);
     if (strChoice == std::string("multicriteria_minimize_total_weight"))

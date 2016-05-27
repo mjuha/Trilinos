@@ -169,10 +169,26 @@ public:
   typedef Tpetra::MultiVector<Scalar, LO, GO, node_type> mv_type;
   typedef Tpetra::CrsGraph<LO, GO, node_type> crs_graph_type;
 
-  typedef LittleBlock<impl_scalar_type, LO> little_block_type;
-  typedef LittleBlock<const impl_scalar_type, LO> const_little_block_type;
-  typedef LittleVector<impl_scalar_type, LO> little_vec_type;
-  typedef LittleVector<const impl_scalar_type, LO> const_little_vec_type;
+  typedef Kokkos::View<impl_scalar_type**,
+                       Kokkos::LayoutRight,
+                       device_type,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+          little_block_type;
+  typedef Kokkos::View<const impl_scalar_type**,
+                       Kokkos::LayoutRight,
+                       device_type,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+          const_little_block_type;
+  typedef Kokkos::View<impl_scalar_type*,
+                       Kokkos::LayoutRight,
+                       device_type,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+          little_vec_type;
+  typedef Kokkos::View<const impl_scalar_type*,
+                       Kokkos::LayoutRight,
+                       device_type,
+                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+          const_little_vec_type;
 
   //@}
   //! \name Constructors and destructor
@@ -611,8 +627,8 @@ public:
   /// calls to fillComplete() and resumeFill().  "Invalidates" means
   /// that you must call this method again to recompute the offsets.
   void
-  getLocalDiagOffsets (const Kokkos::View<size_t*, device_type, 
-		         Kokkos::MemoryUnmanaged>& offsets) const;
+  getLocalDiagOffsets (const Kokkos::View<size_t*, device_type,
+                         Kokkos::MemoryUnmanaged>& offsets) const;
 
   /// \brief DEPRECATED overload of this method that writes offsets to
   ///   a Teuchos::ArrayRCP instead of a Kokkos::View.
@@ -672,7 +688,7 @@ public:
   /// If the matrix has a const ("static") graph, and if that graph
   /// is fill complete, then the offsets array remains valid through
   /// calls to fillComplete() and resumeFill().
-  void
+  void TPETRA_DEPRECATED
   getLocalDiagCopy (BlockCrsMatrix<Scalar,LO,GO,Node>& diag,
                     const Teuchos::ArrayView<const size_t>& offsets) const;
 

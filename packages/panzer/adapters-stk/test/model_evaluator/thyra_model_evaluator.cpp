@@ -141,7 +141,6 @@ namespace panzer {
   {
     using Teuchos::RCP;
 
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     AssemblyPieces ap;
@@ -198,7 +197,6 @@ namespace panzer {
 
   TEUCHOS_UNIT_TEST(thyra_model_evaluator, response)
   {
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     AssemblyPieces ap;
@@ -274,7 +272,6 @@ namespace panzer {
     using Teuchos::RCP;
     using Teuchos::rcp_dynamic_cast;
 
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     AssemblyPieces ap;
@@ -405,7 +402,6 @@ namespace panzer {
     using Teuchos::RCP;
     using Teuchos::rcp_dynamic_cast;
 
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     AssemblyPieces ap;
@@ -521,7 +517,6 @@ namespace panzer {
     using Teuchos::RCP;
     using Teuchos::rcp_dynamic_cast;
 
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     AssemblyPieces ap;
@@ -623,7 +618,6 @@ namespace panzer {
     using Teuchos::RCP;
     using Teuchos::rcp_dynamic_cast;
 
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     AssemblyPieces ap;
@@ -769,7 +763,6 @@ namespace panzer {
     typedef Thyra::ModelEvaluatorBase::OutArgs<double> OutArgs;
     typedef panzer::ModelEvaluator<double> PME;
 
-    PHX::KokkosDeviceSession session;
 
     bool parameter_on = true;
     bool distr_param_on = true;
@@ -893,7 +886,6 @@ namespace panzer {
     using Teuchos::rcp_dynamic_cast;
     using Teuchos::rcp_const_cast;
 
-    PHX::KokkosDeviceSession session;
 
     double tol = 10.0 * Teuchos::ScalarTraits<double>::eps();
 
@@ -1237,7 +1229,7 @@ namespace panzer {
           = Teuchos::rcp(new panzer::DOFManager<int,int>(conn_manager,MPI_COMM_WORLD));
 
       Teuchos::RCP<Intrepid2FieldPattern> fp 
-          = Teuchos::rcp(new Intrepid2FieldPattern(panzer::createIntrepid2Basis<double,Intrepid2::FieldContainer<double> >("HGrad",1,mesh->getCellTopology("eblock-0_0"))));
+          = Teuchos::rcp(new Intrepid2FieldPattern(panzer::createIntrepid2Basis<double,Kokkos::DynRankView<double,PHX::Device> >("HGrad",1,mesh->getCellTopology("eblock-0_0"))));
       dofManager->addField("eblock-0_0","DENSITY",fp);
       dofManager->addField("eblock-1_0","DENSITY",fp);
 

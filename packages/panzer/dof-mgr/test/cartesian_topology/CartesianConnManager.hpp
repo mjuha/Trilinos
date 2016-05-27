@@ -168,6 +168,12 @@ public:
      * \param[in] fp Field pattern to build connectivity for
      */
    virtual void buildConnectivity(const FieldPattern & fp);
+ 
+   /** Build a clone of this connection manager, without any assumptions
+     * about the required connectivity (e.g. <code>buildConnectivity</code>
+     * has never been called).
+     */
+   virtual Teuchos::RCP<panzer::ConnManagerBase<LocalOrdinal> > noConnectivityClone() const;
 
    /** Get ID connectivity for a particular element
      *
@@ -231,8 +237,14 @@ private:
    // Update the connectivity vector with the field pattern. The connectivity is specified
    // here using the i,j,k index of the local element. Also, this is where the ordering
    // of a cell is embedded into the system. 
-   void updateConnectivity(const panzer::FieldPattern & fp,int subcellDim,int localElementId,
-                           std::vector<GlobalOrdinal> & conn) const;
+   void updateConnectivity_2d(const panzer::FieldPattern & fp,int subcellDim,int localElementId,
+                             std::vector<GlobalOrdinal> & conn) const;
+
+   // Update the connectivity vector with the field pattern. The connectivity is specified
+   // here using the i,j,k index of the local element. Also, this is where the ordering
+   // of a cell is embedded into the system. 
+   void updateConnectivity_3d(const panzer::FieldPattern & fp,int subcellDim,int localElementId,
+                             std::vector<GlobalOrdinal> & conn) const;
 
    int numProc_;
    int myRank_;

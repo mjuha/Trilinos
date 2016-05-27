@@ -107,6 +107,9 @@ struct FunctorValueTraits< FunctorType , ArgTag , true /* == exists FunctorType:
 {
   typedef typename Impl::remove_extent< typename FunctorType::value_type >::type  value_type ;
 
+  static_assert( 0 == ( sizeof(value_type) % sizeof(int) ) ,
+    "Reduction functor's declared value_type requires: 0 == sizeof(value_type) % sizeof(int)" );
+
   // If not an array then what is the sizeof(value_type)
   enum { StaticValueSize = Impl::is_array< typename FunctorType::value_type >::value ? 0 : sizeof(value_type) };
 
@@ -340,6 +343,9 @@ public:
   typedef typename Impl::if_c< IS_VOID || IS_REJECT , void , ValueType * >::type  pointer_type ;
   typedef typename Impl::if_c< IS_VOID || IS_REJECT , void , ValueType & >::type  reference_type ;
 
+  static_assert( IS_VOID || IS_REJECT || 0 == ( sizeof(ValueType) % sizeof(int) ) ,
+    "Reduction functor's value_type deduced from functor::operator() requires: 0 == sizeof(value_type) % sizeof(int)" );
+
   enum { StaticValueSize = IS_VOID || IS_REJECT ? 0 : sizeof(ValueType) };
 
   KOKKOS_FORCEINLINE_FUNCTION static
@@ -562,10 +568,23 @@ struct FunctorValueJoin ;
 template< class FunctorType , class ArgTag , class T , class Enable >
 struct FunctorValueJoin< FunctorType , ArgTag , T & , Enable >
 {
+  KOKKOS_FORCEINLINE_FUNCTION
+  FunctorValueJoin(const FunctorType& ){}
+
   KOKKOS_FORCEINLINE_FUNCTION static
   void join( const FunctorType & f , volatile void * const lhs , const volatile void * const rhs )
     {
       *((volatile T*)lhs) += *((const volatile T*)rhs);
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator()( volatile T& lhs , const volatile T& rhs ) const
+    {
+      lhs += rhs;
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( T& lhs , const T& rhs ) const
+    {
+      lhs += rhs;
     }
 };
 
@@ -573,12 +592,31 @@ struct FunctorValueJoin< FunctorType , ArgTag , T & , Enable >
 template< class FunctorType , class ArgTag , class T , class Enable >
 struct FunctorValueJoin< FunctorType , ArgTag , T * , Enable >
 {
+  const FunctorType& f;
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  FunctorValueJoin(const FunctorType& f_):f(f_){}
+
   KOKKOS_FORCEINLINE_FUNCTION static
-  void join( const FunctorType & f , volatile void * const lhs , const volatile void * const rhs )
+  void join( const FunctorType & f_ , volatile void * const lhs , const volatile void * const rhs )
+    {
+      const int n = FunctorValueTraits<FunctorType,ArgTag>::value_count(f_);
+
+      for ( int i = 0 ; i < n ; ++i ) { ((volatile T*)lhs)[i] += ((const volatile T*)rhs)[i]; }
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator()( volatile T* const lhs , const volatile T* const rhs ) const
     {
       const int n = FunctorValueTraits<FunctorType,ArgTag>::value_count(f);
 
-      for ( int i = 0 ; i < n ; ++i ) { ((volatile T*)lhs)[i] += ((const volatile T*)rhs)[i]; }
+      for ( int i = 0 ; i < n ; ++i ) { lhs[i] += rhs[i]; }
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( T* lhs , const T* rhs ) const
+    {
+      const int n = FunctorValueTraits<FunctorType,ArgTag>::value_count(f);
+
+      for ( int i = 0 ; i < n ; ++i ) { lhs[i] += rhs[i]; }
     }
 };
 
@@ -593,10 +631,25 @@ struct FunctorValueJoin
   , decltype( FunctorValueJoinFunction< FunctorType , ArgTag >::enable_if( & FunctorType::join ) )
   >
 {
+  const FunctorType& f;
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  FunctorValueJoin(const FunctorType& f_):f(f_){}
+
   KOKKOS_FORCEINLINE_FUNCTION static
-  void join( const FunctorType & f , volatile void * const lhs , const volatile void * const rhs )
+  void join( const FunctorType & f_ , volatile void * const lhs , const volatile void * const rhs )
     {
-      f.join( ArgTag() , *((volatile T *)lhs) , *((const volatile T *)rhs) );
+      f_.join( ArgTag() , *((volatile T *)lhs) , *((const volatile T *)rhs) );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator()( volatile T& lhs , const volatile T& rhs ) const
+    {
+      f.join( ArgTag() , lhs , rhs );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( T& lhs , const T& rhs ) const
+    {
+      f.join( ArgTag(), lhs , rhs );
     }
 };
 
@@ -611,10 +664,25 @@ struct FunctorValueJoin
   , decltype( FunctorValueJoinFunction< FunctorType , void >::enable_if( & FunctorType::join ) )
   >
 {
+  const FunctorType& f;
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  FunctorValueJoin(const FunctorType& f_):f(f_){}
+
   KOKKOS_FORCEINLINE_FUNCTION static
-  void join( const FunctorType & f , volatile void * const lhs , const volatile void * const rhs )
+  void join( const FunctorType & f_ , volatile void * const lhs , const volatile void * const rhs )
     {
-      f.join( *((volatile T *)lhs) , *((const volatile T *)rhs) );
+      f_.join( *((volatile T *)lhs) , *((const volatile T *)rhs) );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator()( volatile T& lhs , const volatile T& rhs ) const
+    {
+      f.join( lhs , rhs );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( T& lhs , const T& rhs ) const
+    {
+      f.join( lhs , rhs );
     }
 };
 
@@ -629,10 +697,25 @@ struct FunctorValueJoin
   , decltype( FunctorValueJoinFunction< FunctorType , ArgTag >::enable_if( & FunctorType::join ) )
   >
 {
+  const FunctorType& f;
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  FunctorValueJoin(const FunctorType& f_):f(f_){}
+
   KOKKOS_FORCEINLINE_FUNCTION static
-  void join( const FunctorType & f , volatile void * const lhs , const volatile void * const rhs )
+  void join( const FunctorType & f_ , volatile void * const lhs , const volatile void * const rhs )
     {
-      f.join( ArgTag() , (volatile T *)lhs , (const volatile T *)rhs );
+      f_.join( ArgTag() , (volatile T *)lhs , (const volatile T *)rhs );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator()( volatile T* const lhs , const volatile T* const rhs ) const
+    {
+      f.join( ArgTag() , lhs , rhs );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( T* lhs , const T* rhs ) const
+    {
+      f.join( ArgTag(), lhs , rhs );
     }
 };
 
@@ -647,10 +730,25 @@ struct FunctorValueJoin
   , decltype( FunctorValueJoinFunction< FunctorType , void >::enable_if( & FunctorType::join ) )
   >
 {
+  const FunctorType& f;
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  FunctorValueJoin(const FunctorType& f_):f(f_){}
+
   KOKKOS_FORCEINLINE_FUNCTION static
-  void join( const FunctorType & f , volatile void * const lhs , const volatile void * const rhs )
+  void join( const FunctorType & f_ , volatile void * const lhs , const volatile void * const rhs )
     {
-      f.join( (volatile T *)lhs , (const volatile T *)rhs );
+      f_.join( (volatile T *)lhs , (const volatile T *)rhs );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( volatile T* const lhs , const volatile T* const rhs ) const
+    {
+      f.join( lhs , rhs );
+    }
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator() ( T* lhs , const T* rhs ) const
+    {
+      f.join( lhs , rhs );
     }
 };
 

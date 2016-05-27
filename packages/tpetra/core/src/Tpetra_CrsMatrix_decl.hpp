@@ -816,9 +816,9 @@ namespace Tpetra {
     ///   to insert the entries.
     void
     insertGlobalValues (const GlobalOrdinal globalRow,
-			const LocalOrdinal numEnt,
-			const Scalar vals[],
-			const GlobalOrdinal inds[]);
+                        const LocalOrdinal numEnt,
+                        const Scalar vals[],
+                        const GlobalOrdinal inds[]);
 
     /// \brief Insert one or more entries into the matrix, using local
     ///   column indices.
@@ -881,9 +881,9 @@ namespace Tpetra {
     ///   to insert the entries.
     void
     insertLocalValues (const LocalOrdinal localRow,
-		       const LocalOrdinal numEnt,
-		       const Scalar vals[],
-		       const LocalOrdinal cols[]);
+                       const LocalOrdinal numEnt,
+                       const Scalar vals[],
+                       const LocalOrdinal cols[]);
 
     /// \brief Replace one or more entries' values, using global indices.
     ///
@@ -925,8 +925,8 @@ namespace Tpetra {
              class ImplScalarViewType>
     LocalOrdinal
     replaceGlobalValues (const GlobalOrdinal globalRow,
-			 const typename UnmanagedView<GlobalIndicesViewType>::type& inputInds,
-			 const typename UnmanagedView<ImplScalarViewType>::type& inputVals) const
+                         const typename UnmanagedView<GlobalIndicesViewType>::type& inputInds,
+                         const typename UnmanagedView<ImplScalarViewType>::type& inputVals) const
     {
       // We use static_assert here to check the template parameters,
       // rather than std::enable_if (e.g., on the return value, to
@@ -934,51 +934,51 @@ namespace Tpetra {
       // desired attributes).  This turns obscure link errors into
       // clear compilation errors.  It also makes the return value a
       // lot easier to see.
-      static_assert (Kokkos::is_view<GlobalIndicesViewType>::value, 
-		     "First template parameter GlobalIndicesViewType must be "
-		     "a Kokkos::View.");
-      static_assert (Kokkos::is_view<ImplScalarViewType>::value, 
-		     "Second template parameter ImplScalarViewType must be a "
-		     "Kokkos::View.");
+      static_assert (Kokkos::is_view<GlobalIndicesViewType>::value,
+                     "First template parameter GlobalIndicesViewType must be "
+                     "a Kokkos::View.");
+      static_assert (Kokkos::is_view<ImplScalarViewType>::value,
+                     "Second template parameter ImplScalarViewType must be a "
+                     "Kokkos::View.");
       static_assert (static_cast<int> (GlobalIndicesViewType::rank) == 1,
-		     "First template parameter GlobalIndicesViewType must "
-		     "have rank 1.");
-      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1, 
-		     "Second template parameter ImplScalarViewType must have "
-		     "rank 1.");
+                     "First template parameter GlobalIndicesViewType must "
+                     "have rank 1.");
+      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1,
+                     "Second template parameter ImplScalarViewType must have "
+                     "rank 1.");
       static_assert (std::is_same<
-		       typename GlobalIndicesViewType::non_const_value_type,
-		       global_ordinal_type>::value,
-		     "First template parameter GlobalIndicesViewType must "
-		     "contain values of type global_ordinal_type.");
+                       typename GlobalIndicesViewType::non_const_value_type,
+                       global_ordinal_type>::value,
+                     "First template parameter GlobalIndicesViewType must "
+                     "contain values of type global_ordinal_type.");
       static_assert (std::is_same<
-		       typename ImplScalarViewType::non_const_value_type,
-		       impl_scalar_type>::value, 
-		     "Second template parameter ImplScalarViewType must "
-		     "contain values of type impl_scalar_type.");
+                       typename ImplScalarViewType::non_const_value_type,
+                       impl_scalar_type>::value,
+                     "Second template parameter ImplScalarViewType must "
+                     "contain values of type impl_scalar_type.");
 
       typedef LocalOrdinal LO;
       typedef ImplScalarViewType ISVT;
       typedef GlobalIndicesViewType GIVT;
 
       if (! isFillActive () || staticGraph_.is_null ()) {
-	// Fill must be active and the graph must exist.
-	return Teuchos::OrdinalTraits<LO>::invalid ();
+        // Fill must be active and the graph must exist.
+        return Teuchos::OrdinalTraits<LO>::invalid ();
       }
       const RowInfo rowInfo = staticGraph_->getRowInfoFromGlobalRowIndex (globalRow);
       if (rowInfo.localRow == Teuchos::OrdinalTraits<size_t>::invalid ()) {
-	// The input local row is invalid on the calling process,
-	// which means that the calling process summed 0 entries.
-	return static_cast<LO> (0);
+        // The input local row is invalid on the calling process,
+        // which means that the calling process summed 0 entries.
+        return static_cast<LO> (0);
       }
 
       auto curVals = this->getRowViewNonConst (rowInfo);
       // output scalar view type
       typedef typename std::decay<decltype (curVals)>::type OSVT;
       return staticGraph_->template replaceGlobalValues<OSVT, GIVT, ISVT> (rowInfo,
-									   curVals,
-									   inputInds,
-									   inputVals);
+                                                                           curVals,
+                                                                           inputInds,
+                                                                           inputVals);
     }
 
     /// \brief Backwards compatibility version of replaceGlobalValues
@@ -1006,7 +1006,7 @@ namespace Tpetra {
     ///   replace the entries.
     LocalOrdinal
     replaceGlobalValues (const GlobalOrdinal globalRow,
-			 const LocalOrdinal numEnt,
+                         const LocalOrdinal numEnt,
                          const Scalar vals[],
                          const GlobalOrdinal cols[]) const;
 
@@ -1058,28 +1058,28 @@ namespace Tpetra {
       // desired attributes).  This turns obscure link errors into
       // clear compilation errors.  It also makes the return value a
       // lot easier to see.
-      static_assert (Kokkos::is_view<LocalIndicesViewType>::value, 
-		     "First template parameter LocalIndicesViewType must be "
-		     "a Kokkos::View.");
-      static_assert (Kokkos::is_view<ImplScalarViewType>::value, 
-		     "Second template parameter ImplScalarViewType must be a "
-		     "Kokkos::View.");
+      static_assert (Kokkos::is_view<LocalIndicesViewType>::value,
+                     "First template parameter LocalIndicesViewType must be "
+                     "a Kokkos::View.");
+      static_assert (Kokkos::is_view<ImplScalarViewType>::value,
+                     "Second template parameter ImplScalarViewType must be a "
+                     "Kokkos::View.");
       static_assert (static_cast<int> (LocalIndicesViewType::rank) == 1,
-		     "First template parameter LocalIndicesViewType must "
-		     "have rank 1.");
-      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1, 
-		     "Second template parameter ImplScalarViewType must have "
-		     "rank 1.");
+                     "First template parameter LocalIndicesViewType must "
+                     "have rank 1.");
+      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1,
+                     "Second template parameter ImplScalarViewType must have "
+                     "rank 1.");
       static_assert (std::is_same<
-		       typename LocalIndicesViewType::non_const_value_type,
-		       local_ordinal_type>::value,
-		     "First template parameter LocalIndicesViewType must "
-		     "contain values of type local_ordinal_type.");
+                       typename LocalIndicesViewType::non_const_value_type,
+                       local_ordinal_type>::value,
+                     "First template parameter LocalIndicesViewType must "
+                     "contain values of type local_ordinal_type.");
       static_assert (std::is_same<
-		       typename ImplScalarViewType::non_const_value_type,
-		       impl_scalar_type>::value, 
-		     "Second template parameter ImplScalarViewType must "
-		     "contain values of type impl_scalar_type.");
+                       typename ImplScalarViewType::non_const_value_type,
+                       impl_scalar_type>::value,
+                     "Second template parameter ImplScalarViewType must "
+                     "contain values of type impl_scalar_type.");
 
       typedef LocalOrdinal LO;
 
@@ -1132,9 +1132,9 @@ namespace Tpetra {
     ///   replaced; the number of "correct" indices.
     LocalOrdinal
     replaceLocalValues (const LocalOrdinal localRow,
-			const LocalOrdinal numEnt,
-			const Scalar inputVals[],
-			const LocalOrdinal inputCols[]) const;
+                        const LocalOrdinal numEnt,
+                        const Scalar inputVals[],
+                        const LocalOrdinal inputCols[]) const;
 
   private:
     /// \brief Whether sumIntoLocalValues and sumIntoGlobalValues
@@ -1215,7 +1215,7 @@ namespace Tpetra {
     ///   modified; the number of "correct" indices.
     LocalOrdinal
     sumIntoGlobalValues (const GlobalOrdinal globalRow,
-			 const LocalOrdinal numEnt,
+                         const LocalOrdinal numEnt,
                          const Scalar vals[],
                          const GlobalOrdinal cols[],
                          const bool atomic = useAtomicUpdatesByDefault);
@@ -1270,28 +1270,28 @@ namespace Tpetra {
       // desired attributes).  This turns obscure link errors into
       // clear compilation errors.  It also makes the return value a
       // lot easier to see.
-      static_assert (Kokkos::is_view<LocalIndicesViewType>::value, 
-		     "First template parameter LocalIndicesViewType must be "
-		     "a Kokkos::View.");
-      static_assert (Kokkos::is_view<ImplScalarViewType>::value, 
-		     "Second template parameter ImplScalarViewType must be a "
-		     "Kokkos::View.");
+      static_assert (Kokkos::is_view<LocalIndicesViewType>::value,
+                     "First template parameter LocalIndicesViewType must be "
+                     "a Kokkos::View.");
+      static_assert (Kokkos::is_view<ImplScalarViewType>::value,
+                     "Second template parameter ImplScalarViewType must be a "
+                     "Kokkos::View.");
       static_assert (static_cast<int> (LocalIndicesViewType::rank) == 1,
-		     "First template parameter LocalIndicesViewType must "
-		     "have rank 1.");
-      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1, 
-		     "Second template parameter ImplScalarViewType must have "
-		     "rank 1.");
+                     "First template parameter LocalIndicesViewType must "
+                     "have rank 1.");
+      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1,
+                     "Second template parameter ImplScalarViewType must have "
+                     "rank 1.");
       static_assert (std::is_same<
-		       typename LocalIndicesViewType::non_const_value_type,
-		       local_ordinal_type>::value,
-		     "First template parameter LocalIndicesViewType must "
-		     "contain values of type local_ordinal_type.");
+                       typename LocalIndicesViewType::non_const_value_type,
+                       local_ordinal_type>::value,
+                     "First template parameter LocalIndicesViewType must "
+                     "contain values of type local_ordinal_type.");
       static_assert (std::is_same<
-		       typename ImplScalarViewType::non_const_value_type,
-		       impl_scalar_type>::value, 
-		     "Second template parameter ImplScalarViewType must "
-		     "contain values of type impl_scalar_type.");
+                       typename ImplScalarViewType::non_const_value_type,
+                       impl_scalar_type>::value,
+                     "Second template parameter ImplScalarViewType must "
+                     "contain values of type impl_scalar_type.");
 
       typedef LocalOrdinal LO;
 
@@ -1376,7 +1376,7 @@ namespace Tpetra {
     ///   modified; the number of "correct" indices.
     LocalOrdinal
     sumIntoLocalValues (const LocalOrdinal localRow,
-			const LocalOrdinal numEnt,
+                        const LocalOrdinal numEnt,
                         const Scalar vals[],
                         const LocalOrdinal cols[],
                         const bool atomic = useAtomicUpdatesByDefault) const;
@@ -1440,28 +1440,28 @@ namespace Tpetra {
       // desired attributes).  This turns obscure link errors into
       // clear compilation errors.  It also makes the return value a
       // lot easier to see.
-      static_assert (Kokkos::is_view<LocalIndicesViewType>::value, 
-		     "First template parameter LocalIndicesViewType must be "
-		     "a Kokkos::View.");
-      static_assert (Kokkos::is_view<ImplScalarViewType>::value, 
-		     "Second template parameter ImplScalarViewType must be a "
-		     "Kokkos::View.");
+      static_assert (Kokkos::is_view<LocalIndicesViewType>::value,
+                     "First template parameter LocalIndicesViewType must be "
+                     "a Kokkos::View.");
+      static_assert (Kokkos::is_view<ImplScalarViewType>::value,
+                     "Second template parameter ImplScalarViewType must be a "
+                     "Kokkos::View.");
       static_assert (static_cast<int> (LocalIndicesViewType::rank) == 1,
-		     "First template parameter LocalIndicesViewType must "
-		     "have rank 1.");
-      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1, 
-		     "Second template parameter ImplScalarViewType must have "
-		     "rank 1.");
+                     "First template parameter LocalIndicesViewType must "
+                     "have rank 1.");
+      static_assert (static_cast<int> (ImplScalarViewType::rank) == 1,
+                     "Second template parameter ImplScalarViewType must have "
+                     "rank 1.");
       static_assert (std::is_same<
-		       typename LocalIndicesViewType::non_const_value_type,
-		       local_ordinal_type>::value,
-		     "First template parameter LocalIndicesViewType must "
-		     "contain values of type local_ordinal_type.");
+                       typename LocalIndicesViewType::non_const_value_type,
+                       local_ordinal_type>::value,
+                     "First template parameter LocalIndicesViewType must "
+                     "contain values of type local_ordinal_type.");
       static_assert (std::is_same<
-		       typename ImplScalarViewType::non_const_value_type,
-		       impl_scalar_type>::value, 
-		     "Second template parameter ImplScalarViewType must "
-		     "contain values of type impl_scalar_type.");
+                       typename ImplScalarViewType::non_const_value_type,
+                       impl_scalar_type>::value,
+                     "Second template parameter ImplScalarViewType must "
+                     "contain values of type impl_scalar_type.");
 
       typedef LocalOrdinal LO;
       typedef BinaryFunction BF;
@@ -2395,6 +2395,8 @@ namespace Tpetra {
       const range_impl_scalar_type theBeta = static_cast<range_impl_scalar_type> (beta);
       const bool conjugate = (mode == Teuchos::CONJ_TRANS);
       const bool transpose = (mode != Teuchos::NO_TRANS);
+      auto X_lcl = X.template getLocalView<device_type> ();
+      auto Y_lcl = Y.template getLocalView<device_type> ();
 
 #ifdef HAVE_TPETRA_DEBUG
       TEUCHOS_TEST_FOR_EXCEPTION_CLASS_FUNC
@@ -2434,8 +2436,8 @@ namespace Tpetra {
       // If the two pointers are NULL, then they don't alias one
       // another, even though they are equal.
       TEUCHOS_TEST_FOR_EXCEPTION_CLASS_FUNC(
-        X.getDualView ().d_view.ptr_on_device () == Y.getDualView ().d_view.ptr_on_device () &&
-        X.getDualView ().d_view.ptr_on_device () != NULL,
+        X_lcl.ptr_on_device () == Y_lcl.ptr_on_device () &&
+        X_lcl.ptr_on_device () != NULL,
         std::runtime_error, "X and Y may not alias one another.");
 #endif // HAVE_TPETRA_DEBUG
 
@@ -2667,12 +2669,6 @@ namespace Tpetra {
       using Teuchos::CONJ_TRANS;
       using Teuchos::NO_TRANS;
       using Teuchos::TRANS;
-      typedef LocalOrdinal LO;
-      typedef GlobalOrdinal GO;
-      typedef Tpetra::MultiVector<DomainScalar, LO, GO, Node, classic> DMV;
-      typedef Tpetra::MultiVector<RangeScalar, LO, GO, Node, classic> RMV;
-      typedef typename DMV::dual_view_type::host_mirror_space HMDT ;
-
       const char tfecfFuncName[] = "localSolve: ";
 
       TEUCHOS_TEST_FOR_EXCEPTION_CLASS_FUNC
@@ -2691,6 +2687,13 @@ namespace Tpetra {
         (STS::isComplex && mode == TRANS, std::logic_error, "This method does "
          "not currently support non-conjugated transposed solve (mode == "
          "Teuchos::TRANS) for complex scalar types.");
+
+      // FIXME (mfh 19 May 2016) This makes some Ifpack2 tests fail.
+      //
+      // TEUCHOS_TEST_FOR_EXCEPTION_CLASS_FUNC
+      //   (Y.template need_sync<device_type> () && !
+      //    Y.template need_sync<Kokkos::HostSpace> (), std::runtime_error,
+      //    "Y must be sync'd to device memory before you may call this method.");
 
       // FIXME (mfh 27 Aug 2014) Tpetra has always made the odd decision
       // that if _some_ diagonal entries are missing locally, then it
@@ -2713,27 +2716,23 @@ namespace Tpetra {
         (getNodeNumDiags () < getNodeNumRows ()) ? "U" : "N";
 
       local_matrix_type A_lcl = this->getLocalMatrix ();
-
-      // FIXME (mfh 23 Apr 2015) We currently only have a host,
-      // sequential kernel for local sparse triangular solve.
-
-      Y.getDualView ().template sync<HMDT> (); // Y is read-only
-      X.getDualView ().template sync<HMDT> ();
-      X.getDualView ().template modify<HMDT> (); // we will write to X
+      X.template modify<device_type> (); // we will write to X
 
       if (X.isConstantStride () && Y.isConstantStride ()) {
-        typename DMV::dual_view_type::t_host X_lcl = X.template getLocalView<HMDT> ();
-        typename RMV::dual_view_type::t_host Y_lcl = Y.template getLocalView<HMDT> ();
-        KokkosSparse::trsv (uplo.c_str (), trans.c_str (), diag.c_str (), A_lcl, Y_lcl, X_lcl);
+        auto X_lcl = X.template getLocalView<device_type> ();
+        auto Y_lcl = Y.template getLocalView<device_type> ();
+        KokkosSparse::trsv (uplo.c_str (), trans.c_str (), diag.c_str (),
+                            A_lcl, Y_lcl, X_lcl);
       }
       else {
         const size_t numVecs = std::min (X.getNumVectors (), Y.getNumVectors ());
         for (size_t j = 0; j < numVecs; ++j) {
           auto X_j = X.getVector (j);
           auto Y_j = X.getVector (j);
-          auto X_lcl = X_j->template getLocalView<HMDT> ();
-          auto Y_lcl = Y_j->template getLocalView<HMDT> ();
-          KokkosSparse::trsv (uplo.c_str (), trans.c_str (), diag.c_str (), A_lcl, Y_lcl, X_lcl);
+          auto X_lcl = X_j->template getLocalView<device_type> ();
+          auto Y_lcl = Y_j->template getLocalView<device_type> ();
+          KokkosSparse::trsv (uplo.c_str (), trans.c_str (),
+                              diag.c_str (), A_lcl, Y_lcl, X_lcl);
         }
       }
     }
@@ -3067,9 +3066,9 @@ namespace Tpetra {
     /// \brief Unpack the imported column indices and values, and
     ///   combine into matrix.
     void
-    unpackAndCombineImpl (const Teuchos::ArrayView<const LocalOrdinal> &importLIDs,
-                          const Teuchos::ArrayView<const char> &imports,
-                          const Teuchos::ArrayView<size_t> &numPacketsPerLID,
+    unpackAndCombineImpl (const Teuchos::ArrayView<const LocalOrdinal>& importLIDs,
+                          const Teuchos::ArrayView<const char>& imports,
+                          const Teuchos::ArrayView<const size_t>& numPacketsPerLID,
                           size_t constantNumPackets,
                           Distributor& distor,
                           CombineMode combineMode);

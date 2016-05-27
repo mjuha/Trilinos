@@ -161,11 +161,15 @@ struct MeshIndex
 // remove hop.
 struct FastMeshIndex
 {
+  FastMeshIndex() : bucket_id(0), bucket_ord(0) {}
+  FastMeshIndex(unsigned id, unsigned ord) : bucket_id(id), bucket_ord(ord) {}
+  ~FastMeshIndex(){}
+
   unsigned bucket_id;
   unsigned bucket_ord;
 };
 
-NAMED_PAIR(BucketInfo, unsigned, bucket_id, unsigned, num_entities_this_bucket);
+NAMED_PAIR(BucketInfo, unsigned, bucket_id, unsigned, num_entities_this_bucket)
 
 struct BucketIndices
 {
@@ -322,10 +326,28 @@ inline std::ostream & operator<<(std::ostream &out, ConnectivityType type)
   return out;
 }
 
-enum ConnectivityOrdinal
+#define STK_16BIT_CONNECTIVITY_ORDINAL
+#ifdef STK_16BIT_CONNECTIVITY_ORDINAL
+enum ConnectivityOrdinal : uint16_t
+{
+  INVALID_CONNECTIVITY_ORDINAL = 65535
+};
+#else
+enum ConnectivityOrdinal : uint32_t
 {
   INVALID_CONNECTIVITY_ORDINAL = ~0U
 };
+#endif
+
+inline std::ostream & operator<<(std::ostream &out, ConnectivityOrdinal ordinal)
+{
+#ifdef STK_16BIT_CONNECTIVITY_ORDINAL
+  out << static_cast<uint16_t>(ordinal); 
+#else
+  out << static_cast<uint32_t>(ordinal);
+#endif
+  return out;
+}
 
 inline
 ConnectivityOrdinal& operator++(ConnectivityOrdinal& ord)
