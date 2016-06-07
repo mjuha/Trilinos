@@ -55,7 +55,7 @@ namespace Amesos2Stratimikos {
 /** \brief .
 \ingroup Amesos_Thyra_adapters_grp
 */
-  enum ESolverType {KLU};
+  enum ESolverType {SuperLU};
 
 /** \brief .
 \ingroup Amesos_Thyra_adapters_grp

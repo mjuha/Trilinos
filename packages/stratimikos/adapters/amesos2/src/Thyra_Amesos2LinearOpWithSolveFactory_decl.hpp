@@ -118,7 +118,7 @@ namespace Thyra {
   /** \brief Constructor which sets the defaults.
    */
   Amesos2LinearOpWithSolveFactory(
-    const Amesos2Stratimikos::ESolverType                 solverType  = Amesos2Stratimikos::KLU
+    const Amesos2Stratimikos::ESolverType                 solverType  = Amesos2Stratimikos::SuperLU
     ,const Amesos2Stratimikos::ERefactorizationPolicy     refactorizationPolicy  = Amesos2Stratimikos::REPIVOT_ON_REFACTORIZATION
     ,const bool                               throwOnPrecInput       = true
     );

@@ -46,7 +46,7 @@
 
 //Tpetra typedefs
 typedef double                                      ST;
-typedef long long int                               GO;
+typedef int                                         GO;
 typedef int                                         LO;
 typedef Tpetra::Map<LO, GO>             Tpetra_Map;
 typedef Tpetra::CrsMatrix<ST, LO, GO>   Tpetra_CrsMatrix;

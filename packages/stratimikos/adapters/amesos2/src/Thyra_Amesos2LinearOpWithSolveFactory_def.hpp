@@ -58,7 +58,7 @@
 #include "Teuchos_TypeTraits.hpp"
 #include "Teuchos_VerboseObjectParameterListHelpers.hpp"
 
-#include "Amesos2_KLU2.hpp"
+#include "Amesos2_Superludist.hpp"
 
 namespace Thyra {
 
@@ -197,7 +197,8 @@ void Amesos2LinearOpWithSolveFactory<Scalar>::initializeOp(
     Amesos2::Details::LinearSolverFactory<Tpetra_MultiVector,Tpetra_Operator,Scalar> linearsolverfactory;
       
     // Create the concrete solver
-    Teuchos::RCP< Trilinos::Details::LinearSolver<Tpetra_MultiVector,Tpetra_Operator,Scalar> > amesosSolver = linearsolverfactory.getLinearSolver("klu2");
+    Teuchos::RCP< Trilinos::Details::LinearSolver<Tpetra_MultiVector,Tpetra_Operator,Scalar> > 
+      amesosSolver = linearsolverfactory.getLinearSolver("superludist");
 
     // set 
     amesosSolver->setMatrix(tpetraFwdOp);
@@ -227,7 +228,7 @@ void Amesos2LinearOpWithSolveFactory<Scalar>::initializeOp(
 
     // Do the initial factorization
     *out << "Performing factorization ...\n";
-    //amesosSolver->symbolic();
+    amesosSolver->symbolic();
     amesosSolver->numeric();
 
     // Initialize the LOWS object and we are done!
@@ -381,7 +382,7 @@ Amesos2LinearOpWithSolveFactory<Scalar>::generateAndGetValidParameters()
     validParamList = Teuchos::rcp(new Teuchos::ParameterList("Amesos2"));
     validParamList->set(
       SolverType_name
-      ,Amesos2Stratimikos::toString(Amesos2Stratimikos::KLU)
+      ,Amesos2Stratimikos::toString(Amesos2Stratimikos::SuperLU)
       );
     validParamList->set(RefactorizationPolicy_name,Amesos2Stratimikos::toString(Amesos2Stratimikos::REPIVOT_ON_REFACTORIZATION));
     validParamList->set(ThrowOnPreconditionerInput_name,bool(true));

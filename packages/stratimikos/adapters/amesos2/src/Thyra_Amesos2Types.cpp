@@ -47,7 +47,7 @@ namespace Thyra {
 
 const Amesos2Stratimikos::ESolverType Amesos2Stratimikos::solverTypeValues[Amesos2Stratimikos::numSolverTypes] =
 {
-  Amesos2Stratimikos::KLU
+  Amesos2Stratimikos::SuperLU
 };
 
 const char* Amesos2Stratimikos::solverTypeNames[Amesos2Stratimikos::numSolverTypes] =
