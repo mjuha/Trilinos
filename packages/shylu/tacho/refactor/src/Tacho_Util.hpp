@@ -48,6 +48,12 @@ namespace Tacho {
     throw x(msg);                                                       \
   }
 
+#define TACHO_TEST_FOR_WARNING(ierr, msg)                                 \
+  if ((ierr) != 0) {                                                    \
+    fprintf(stderr, ">> Warning in file %s, line %d, error %d \n",__FILE__,__LINE__,ierr); \
+    fprintf(stderr, "   %s\n", msg);                                    \
+  }
+
   /// \brief Control parameter decomposition.
   ///
 
@@ -178,24 +184,46 @@ namespace Tacho {
       return is_scalar_type<T>::value;
     }
 
+
+    // uses range [first, last)
     template<typename ValueType, typename SpaceType, typename IterType>
     KOKKOS_FORCEINLINE_FUNCTION
     static IterType getLowerBound(const Kokkos::View<ValueType*,SpaceType> &data,
-                                  const IterType begin,
-                                  const IterType end,
+                                  IterType first,
+                                  IterType last,
                                   const ValueType val) {
-      IterType it = begin, tmp = begin, count = end - begin, step = 0;
+      IterType it, count = last - first, step = 0;
       while (count > 0) {
-        it = tmp ;
+        it = first; 
         it += ( step = (count >> 1) );
         if (data[it] < val) {
-          tmp = ++it;
-          count -= (step+1);
+          first = ++it;
+          count -= step+1;
         } else {
           count=step;
         }
       }
-      return tmp;
+      return first;
+    }
+
+    template<typename ValueType, typename SpaceType, typename IterType>
+    KOKKOS_FORCEINLINE_FUNCTION
+    static IterType getUpperBound(const Kokkos::View<ValueType*,SpaceType> &data,
+                                  IterType first,
+                                  IterType last,
+                                  const ValueType val) {
+      IterType it, count = last - first, step;
+      while (count > 0) {
+        it = first; 
+        it += ( step = (count >> 1) );
+        if (!(val < data[it])) {
+          first = ++it; 
+          count -= step+1; 
+        } else { 
+          count = step;
+        }
+      }
+      return first;
     }
 
     template<typename T>

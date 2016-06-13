@@ -175,9 +175,15 @@ TRIBITS_ADD_OPTION_AND_DEFINE(
 TRIBITS_ADD_OPTION_AND_DEFINE(
   Tpetra_ENABLE_Kokkos_DistObject
   TPETRA_ENABLE_KOKKOS_DISTOBJECT
-  "Experimental option to access alternate DistObject interface, DistObjectKA."
+  "Experimental option to access alternate DistObject interface, DistObjectKA.  This option has been DEPRECATED and must no longer be set.  See Github Issue #387.  Do NOT set this option."
   OFF
   )
+IF (DEFINED Tpetra_ENABLE_Kokkos_DistObject)
+  IF (Tpetra_ENABLE_Kokkos_DistObject)
+    MESSAGE(FATAL_ERROR "The Tpetra_ENABLE_Kokkos_DistObject option has been DEPRECATED and must no longer be set.  See Github Issue #387.")
+  ENDIF ()
+ENDIF ()
+
 
 TRIBITS_ADD_OPTION_AND_DEFINE(
   Tpetra_ENABLE_MMM_Timings
@@ -233,6 +239,13 @@ ENDIF()
 IF (Tpetra_ENABLE_Kokkos_Refactor AND ${PACKAGE_NAME}_ENABLE_RTI)
   MESSAGE(FATAL_ERROR "You enabled the Reduction/Transformation Interface (RTI) in Tpetra by setting ${PACKAGE_NAME}_ENABLE_RTI, yet the Kokkos refactor (new) version of Tpetra is enabled.  We have not yet certified RTI for use with the new version of Tpetra.  If you really need RTI right now, you may bring back the old version of Tpetra temporarily by setting Tpetra_ENABLE_Kokkos_Refactor:BOOL=OFF.  Please note that the old version of Tpetra will go away completely with the 12.0 release of Trilinos.")
 ENDIF ()
+
+TRIBITS_ADD_OPTION_AND_DEFINE(
+  Tpetra_BCRS_Point_Import
+  HAVE_TPETRA_BCRS_DO_POINT_IMPORT
+  "Do MV import instead of BMV import."
+  OFF
+  )
 
 #
 # Add libraries, tests, and examples
