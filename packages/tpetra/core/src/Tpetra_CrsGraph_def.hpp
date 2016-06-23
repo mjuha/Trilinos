@@ -52,7 +52,6 @@
 
 #include "Tpetra_Distributor.hpp"
 #include "Teuchos_SerialDenseMatrix.hpp"
-
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -131,7 +130,7 @@ namespace Tpetra {
           auto lclColInds =
             Kokkos::subview (ind_, Kokkos::make_pair (ptr_[lclRowInd],
                                                       ptr_[lclRowInd+1]));
-          using ::Tpetra::Details::findRelOffset;
+          using ::KokkosSparse::findRelOffset;
           const LO diagOffset =
             findRelOffset<LO, lcl_col_inds_type> (lclColInds, numEnt,
                                                   lclColInd, 0, isSorted_);
@@ -1971,136 +1970,6 @@ namespace Tpetra {
       rangeMap_  = rangeMap;
       exporter_ = null;
     }
-  }
-
-
-  template <class LocalOrdinal, class GlobalOrdinal, class Node, const bool classic>
-  size_t
-  CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::
-  findLocalIndex (const RowInfo& rowinfo,
-                  const LocalOrdinal ind,
-                  const size_t hint) const
-  {
-    auto colInds = this->getLocalKokkosRowView (rowinfo);
-    return this->findLocalIndex (rowinfo, ind, colInds, hint);
-  }
-
-
-  template <class LocalOrdinal, class GlobalOrdinal, class Node, const bool classic>
-  size_t
-  CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::
-  findLocalIndex (const RowInfo& rowinfo,
-                  const LocalOrdinal ind,
-                  const Kokkos::View<const LocalOrdinal*, device_type,
-                    Kokkos::MemoryUnmanaged>& colInds,
-                  const size_t hint) const
-  {
-    typedef const LocalOrdinal* IT;
-
-    // NOTE (mfh 11 Oct 2015) This method assumes UVM.  We could
-    // imagine templating this method on the memory space, but makes
-    // more sense to let UVM work.
-
-    // If the hint was correct, then the hint is the offset to return.
-    if (hint < rowinfo.numEntries && colInds(hint) == ind) {
-      return hint;
-    }
-
-    // The hint was wrong, so we must search for the given column
-    // index in the column indices for the given row.  How we do the
-    // search depends on whether the graph's column indices are
-    // sorted.
-    IT beg = colInds.ptr_on_device ();
-    IT end = beg + rowinfo.numEntries;
-    IT ptr = beg + rowinfo.numEntries; // "null"
-    bool found = true;
-
-    if (isSorted ()) {
-      std::pair<IT,IT> p = std::equal_range (beg, end, ind); // binary search
-      if (p.first == p.second) {
-        found = false;
-      } else {
-        ptr = p.first;
-      }
-    }
-    else {
-      ptr = std::find (beg, end, ind); // direct search
-      if (ptr == end) {
-        found = false;
-      }
-    }
-
-    if (found) {
-      return static_cast<size_t> (ptr - beg);
-    }
-    else {
-      return Teuchos::OrdinalTraits<size_t>::invalid ();
-    }
-  }
-
-
-  template <class LocalOrdinal, class GlobalOrdinal, class Node, const bool classic>
-  size_t
-  CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::
-  findGlobalIndex (const RowInfo& rowinfo,
-                   const GlobalOrdinal ind,
-                   const Kokkos::View<const GlobalOrdinal*,
-                     device_type, Kokkos::MemoryUnmanaged>& colInds,
-                   const size_t hint) const
-  {
-    typedef const GlobalOrdinal* IT;
-
-    // NOTE (mfh 26 Nov 2015) This method assumes UVM.  We could
-    // imagine templating this method on the memory space, but makes
-    // more sense to let UVM work.
-
-    // If the hint was correct, then the hint is the offset to return.
-    if (hint < rowinfo.numEntries && colInds(hint) == ind) {
-      return hint;
-    }
-
-    // The hint was wrong, so we must search for the given column
-    // index in the column indices for the given row.  How we do the
-    // search depends on whether the graph's column indices are
-    // sorted.
-    IT beg = colInds.ptr_on_device ();
-    IT end = beg + rowinfo.numEntries;
-    IT ptr = beg + rowinfo.numEntries; // "null"
-    bool found = true;
-
-    if (isSorted ()) {
-      std::pair<IT,IT> p = std::equal_range (beg, end, ind); // binary search
-      if (p.first == p.second) {
-        found = false;
-      } else {
-        ptr = p.first;
-      }
-    }
-    else {
-      ptr = std::find (beg, end, ind); // direct search
-      if (ptr == end) {
-        found = false;
-      }
-    }
-
-    if (found) {
-      return static_cast<size_t> (ptr - beg);
-    }
-    else {
-      return Teuchos::OrdinalTraits<size_t>::invalid ();
-    }
-  }
-
-
-  template <class LocalOrdinal, class GlobalOrdinal, class Node, const bool classic>
-  size_t
-  CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::
-  findGlobalIndex (const RowInfo& rowinfo,
-                   const GlobalOrdinal ind,
-                   const size_t hint) const
-  {
-    auto colInds = this->getGlobalKokkosRowView (rowinfo);
-    return this->findGlobalIndex (rowinfo, ind, colInds, hint);
   }
 
 
@@ -4458,14 +4327,6 @@ namespace Tpetra {
   }
 
   template <class LocalOrdinal, class GlobalOrdinal, class Node, const bool classic>
-  typename CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::local_graph_type
-  CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::
-  getLocalGraph_Kokkos () const
-  {
-    return lclGraph_;
-  }
-
-  template <class LocalOrdinal, class GlobalOrdinal, class Node, const bool classic>
   void
   CrsGraph<LocalOrdinal, GlobalOrdinal, Node, classic>::
   computeGlobalConstants ()
@@ -5678,6 +5539,7 @@ namespace Tpetra {
     // setup, at least on the host.  For CUDA, we have to use LocalMap
     // (that comes from each of the two Maps).
 
+    const bool sorted = this->isSorted ();
     if (isFillComplete ()) {
       auto lclGraph = this->getLocalGraph ();
       // This actually invokes the parallel kernel to do the work.
@@ -5686,7 +5548,7 @@ namespace Tpetra {
                                                        lclColMap,
                                                        lclGraph.row_map,
                                                        lclGraph.entries,
-                                                       this->isSorted ());
+                                                       sorted);
     }
     else {
       for (LO lclRowInd = 0; lclRowInd < lclNumRows; ++lclRowInd) {
@@ -5704,7 +5566,12 @@ namespace Tpetra {
           const RowInfo rowInfo = this->getRowInfo (lclRowInd);
           if (static_cast<LO> (rowInfo.localRow) == lclRowInd &&
               rowInfo.numEntries > 0) {
-            const size_t offset = this->findLocalIndex (rowInfo, lclColInd);
+
+            auto colInds = this->getLocalKokkosRowView (rowInfo);
+            const size_t hint = 0; // not needed for this algorithm
+            const size_t offset =
+              KokkosSparse::findRelOffset (colInds, rowInfo.numEntries,
+                                           lclColInd, hint, sorted);
             offsets(lclRowInd) = offset;
 
 #ifdef HAVE_TPETRA_DEBUG

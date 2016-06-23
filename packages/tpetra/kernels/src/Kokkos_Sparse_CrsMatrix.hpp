@@ -51,15 +51,12 @@
 #ifndef KOKKOS_SPARSE_CRSMATRIX_HPP_
 #define KOKKOS_SPARSE_CRSMATRIX_HPP_
 
-#include <Kokkos_Core.hpp>
-#include <Kokkos_StaticCrsGraph.hpp>
+#include "Kokkos_Core.hpp"
+#include "Kokkos_StaticCrsGraph.hpp"
+#include "Kokkos_Sparse_findRelOffset.hpp"
 #include <sstream>
 #include <stdexcept>
-
-#ifdef KOKKOS_HAVE_CXX11
 #include <type_traits>
-#endif // KOKKOS_HAVE_CXX11
-
 
 namespace KokkosSparse {
 
@@ -186,7 +183,10 @@ private:
   /// \brief Stride between successive entries in the row.
   ///
   /// For compressed sparse row (CSR) storage, this is always one.
-  /// This might be greater than one for storage formats like ELLPACK.
+  /// This might be greater than one for storage formats like ELLPACK
+  /// or Jagged Diagonal.  Nevertheless, the stride can never be
+  /// greater than the number of rows or columns in the matrix.  Thus,
+  /// \c ordinal_type is the correct type.
   const ordinal_type stride_;
 
 public:
@@ -283,7 +283,10 @@ private:
   /// \brief Stride between successive entries in the row.
   ///
   /// For compressed sparse row (CSR) storage, this is always one.
-  /// This might be greater than one for storage formats like ELLPACK.
+  /// This might be greater than one for storage formats like ELLPACK
+  /// or Jagged Diagonal.  Nevertheless, the stride can never be
+  /// greater than the number of rows or columns in the matrix.  Thus,
+  /// \c ordinal_type is the correct type.
   const ordinal_type stride_;
 
 public:
@@ -616,60 +619,69 @@ public:
           OrdinalType* rows,
           OrdinalType* cols);
 
-  // FIXME (mfh 29 Sep 2013) We need a way to disable atomic updates
-  // for ScalarType types that do not support them.  We're pretty much
-  // limited to ScalarType = float, double, and {u}int{32,64}_t.  It
-  // could make sense to do atomic add updates elementwise for complex
-  // numbers, but that's about it unless we have transactional memory
-  // extensions.  Dan Sunderland explained to me that the "array of
-  // atomic int 'locks'" approach (for ScalarType that don't directly
-  // support atomic updates) won't work on GPUs.
   KOKKOS_INLINE_FUNCTION
-  void
+  OrdinalType
   sumIntoValues (const OrdinalType rowi,
                  const OrdinalType cols[],
                  const OrdinalType ncol,
-                 ScalarType vals[],
+                 const ScalarType vals[],
+                 const bool is_sorted = false,
                  const bool force_atomic = false) const
   {
     SparseRowView<CrsMatrix> row_view = this->row (rowi);
-    const OrdinalType length = row_view.length;
-    for (OrdinalType i = 0; i < ncol; ++i) {
-      for (OrdinalType j = 0; j < length; ++j) {
-        if (row_view.colidx(j) == cols[i]) {
-          if (force_atomic) {
-            Kokkos::atomic_add(&row_view.value(j), vals[i]);
-          } else {
-            row_view.value(j) += vals[i];
-          }
-          break;
+    const ordinal_type length = row_view.length;
+
+    ordinal_type hint = 0; // Guess for offset of current column index in row
+    ordinal_type numValid = 0; // number of valid local column indices
+
+    for (ordinal_type i = 0; i < ncol; ++i) {
+      const ordinal_type offset =
+        findRelOffset (&(row_view.colidx(0)), length, cols[i], hint, is_sorted);
+      if (offset != length) {
+        if (force_atomic) {
+          Kokkos::atomic_add (&(row_view.value(offset)), vals[i]);
+        }
+        else {
+          row_view.value(offset) += vals[i];
         }
       }
+      hint = offset + 1;
+      ++numValid;
     }
+    return numValid;
   }
 
-  // FIXME (mfh 29 Sep 2013) See above notes on sumIntoValues.
+
   KOKKOS_INLINE_FUNCTION
-  void
+  OrdinalType
   replaceValues (const OrdinalType rowi,
                  const OrdinalType cols[],
                  const OrdinalType ncol,
-                 ScalarType vals[],
+                 const ScalarType vals[],
+                 const bool is_sorted = false,
                  const bool force_atomic = false) const
   {
     SparseRowView<CrsMatrix> row_view = this->row (rowi);
-    const OrdinalType length = row_view.length;
-    for (OrdinalType i = 0; i < ncol; ++i) {
-      for (OrdinalType j = 0; j < length; ++j) {
-        if (row_view.colidx(j) == cols[i]) {
-          if (force_atomic) {
-            Kokkos::atomic_assign(&row_view.value(j), vals[i]);
-          } else {
-            row_view.value(j) = vals[i];
-          }
+    const ordinal_type length = row_view.length;
+
+    ordinal_type hint = 0; // Guess for offset of current column index in row
+    ordinal_type numValid = 0; // number of valid local column indices
+
+    for (ordinal_type i = 0; i < ncol; ++i) {
+      const ordinal_type offset =
+        findRelOffset (&(row_view.colidx(0)), length, cols[i], hint, is_sorted);
+      if (offset != length) {
+        if (force_atomic) {
+          Kokkos::atomic_assign (&(row_view.value(offset)), vals[i]);
+        }
+        else {
+          row_view.value(offset) = vals[i];
         }
       }
+      hint = offset + 1;
+      ++numValid;
     }
+    return numValid;
   }
 
   //! Attempt to assign the input matrix to \c *this.
@@ -719,7 +731,32 @@ public:
   /// Users should not rely on the return type of this method.  They
   /// should instead assign to 'auto'.  That allows compile-time
   /// polymorphism for different kinds of sparse matrix formats (e.g.,
-  /// ELLPACK) that we may wish to support in the future.
+  /// ELLPACK or Jagged Diagonal) that we may wish to support in the
+  /// future.
+  ///
+  /// Both row() and rowConst() used to take a "SizeType" template
+  /// parameter, which was the type to use for row offsets.  This is
+  /// unnecessary, because the CrsMatrix specialization already has
+  /// the row offset type available, via the <tt>size_type</tt>
+  /// typedef.  Our sparse matrix-vector multiply implementation for
+  /// CrsMatrix safely uses <tt>ordinal_type</tt> rather than
+  /// <tt>size_type</tt> to iterate over all the entries in a row of
+  /// the sparse matrix.  Since <tt>ordinal_type</tt> may be smaller
+  /// than <tt>size_type</tt>, compilers may generate more efficient
+  /// code.  The row() and rowConst() methods first compute the
+  /// difference of consecutive row offsets as <tt>size_type</tt>, and
+  /// then cast to <tt>ordinal_type</tt>.  If you want to do this
+  /// yourself, here is an example:
+  ///
+  /// \code
+  /// for (ordinal_type lclRow = 0; lclRow < A.numRows (); ++lclRow) {
+  ///   const ordinal_type numEnt =
+  ///     static_cast<ordinal_type> (A.graph.row_map(i+1) - A.graph.row_map(i));
+  ///   for (ordinal_type k = 0; k < numEnt; ++k) {
+  ///     // etc.
+  ///   }
+  /// }
+  /// \endcode
   KOKKOS_INLINE_FUNCTION
   SparseRowView<CrsMatrix> row (const ordinal_type i) const {
     const size_type start = graph.row_map(i);
@@ -752,7 +789,32 @@ public:
   /// Users should not rely on the return type of this method.  They
   /// should instead assign to 'auto'.  That allows compile-time
   /// polymorphism for different kinds of sparse matrix formats (e.g.,
-  /// ELLPACK) that we may wish to support in the future.
+  /// ELLPACK or Jagged Diagonal) that we may wish to support in the
+  /// future.
+  ///
+  /// Both row() and rowConst() used to take a "SizeType" template
+  /// parameter, which was the type to use for row offsets.  This is
+  /// unnecessary, because the CrsMatrix specialization already has
+  /// the row offset type available, via the <tt>size_type</tt>
+  /// typedef.  Our sparse matrix-vector multiply implementation for
+  /// CrsMatrix safely uses <tt>ordinal_type</tt> rather than
+  /// <tt>size_type</tt> to iterate over all the entries in a row of
+  /// the sparse matrix.  Since <tt>ordinal_type</tt> may be smaller
+  /// than <tt>size_type</tt>, compilers may generate more efficient
+  /// code.  The row() and rowConst() methods first compute the
+  /// difference of consecutive row offsets as <tt>size_type</tt>, and
+  /// then cast to <tt>ordinal_type</tt>.  If you want to do this
+  /// yourself, here is an example:
+  ///
+  /// \code
+  /// for (ordinal_type lclRow = 0; lclRow < A.numRows (); ++lclRow) {
+  ///   const ordinal_type numEnt =
+  ///     static_cast<ordinal_type> (A.graph.row_map(i+1) - A.graph.row_map(i));
+  ///   for (ordinal_type k = 0; k < numEnt; ++k) {
+  ///     // etc.
+  ///   }
+  /// }
+  /// \endcode
   KOKKOS_INLINE_FUNCTION
   SparseRowViewConst<CrsMatrix> rowConst (const ordinal_type i) const {
     const size_type start = graph.row_map(i);

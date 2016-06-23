@@ -20,6 +20,68 @@ namespace Experimental{
 
 namespace Util{
 
+enum ExecSpaceType{Exec_SERIAL, Exec_OMP, Exec_PTHREADS, Exec_QTHREADS, Exec_CUDA};
+template <typename ExecutionSpace>
+ExecSpaceType get_exec_space_type(){
+
+#if defined( KOKKOS_HAVE_SERIAL )
+  if (Kokkos::Impl::is_same< Kokkos::Serial , ExecutionSpace >::value){
+    return Exec_SERIAL;
+  }
+#endif
+
+#if defined( KOKKOS_HAVE_PTHREAD )
+  if (Kokkos::Impl::is_same< Kokkos::Threads , ExecutionSpace >::value){
+    return Exec_PTHREADS;
+  }
+#endif
+
+#if defined( KOKKOS_HAVE_OPENMP )
+  if (Kokkos::Impl::is_same< Kokkos::OpenMP, ExecutionSpace >::value){
+    return Exec_OMP;
+  }
+#endif
+
+#if defined( KOKKOS_HAVE_CUDA )
+  if (Kokkos::Impl::is_same<Kokkos::Cuda, ExecutionSpace >::value){
+    return Exec_CUDA;
+  }
+#endif
+
+#if defined( KOKKOS_HAVE_QTHREAD)
+  if (Kokkos::Impl::is_same< Kokkos::Qthread, ExecutionSpace >::value){
+    return Exec_QTHREADS;
+  }
+#endif
+  return Exec_SERIAL;
+
+}
+
+
+template <typename in_lno_view_t,
+          typename out_lno_view_t>
+struct Histogram{
+  in_lno_view_t inview;
+  out_lno_view_t outview;
+  Histogram (in_lno_view_t inview_, out_lno_view_t outview_): inview(inview_), outview(outview_){}
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const size_t &ii) const {
+    Kokkos::atomic_fetch_add(&(outview(inview(ii))),1);
+  }
+};
+
+template <typename in_lno_view_t,
+          typename out_lno_view_t,
+          typename MyExecSpace>
+void get_histogram(
+    typename in_lno_view_t::size_type in_elements,
+    in_lno_view_t in_view,
+    out_lno_view_t histogram /*must be initialized with 0s*/){
+  typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
+  Kokkos::parallel_for( my_exec_space(0, in_elements), Histogram<in_lno_view_t, out_lno_view_t>(in_view, histogram));
+}
+
 template <typename idx, typename ExecutionSpace>
 void get_suggested_vector_team_size(
     int max_allowed_team_size,
@@ -1323,10 +1385,10 @@ struct ReduceMaxFunctor{
 
   view_type view_to_reduce;
   typedef typename view_type::non_const_value_type value_type;
-  value_type min_val;
+  const value_type min_val;
   ReduceMaxFunctor(
       view_type view_to_reduce_): view_to_reduce(view_to_reduce_),
-          min_val(-std::numeric_limits<value_type>::max()){
+          min_val(KOKKOSKERNELS_MACRO_MIN (-std::numeric_limits<value_type>::max(), 0)){
   }
   KOKKOS_INLINE_FUNCTION
   void operator()(const size_t &i, value_type &max_reduction) const {
@@ -1369,8 +1431,10 @@ struct IsEqualFunctor{
   KOKKOS_INLINE_FUNCTION
   void operator()(const size_t &i, int &is_equal) const {
     if (view1(i) != view2(i)) {
-      std::cout << "i:" << i << "view1:" << view1(i) << " view2:" <<  view2(i) << std::endl;
-      is_equal = 0;}
+      //std::cout << "i:" << i << "view1:" << view1(i) << " view2:" <<  view2(i) << std::endl;
+      //printf("i:%d v1:")
+      is_equal = 0;
+    }
   }
 
   KOKKOS_INLINE_FUNCTION
